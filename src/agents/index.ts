@@ -1,2 +1,6 @@
 export * from './llm/llm-adapter'
 export * from './llm/stub-adapter'
+export * from './llm/deterministic-mock-adapter'
+export * from './graph/types'
+export * from './graph/trace'
+export { analyzeCase, createAnalyzeGraph } from './graph/analyze-graph'
