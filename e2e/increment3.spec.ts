@@ -1,11 +1,9 @@
 /**
  * increment3.spec.ts — Playwright E2E for Increment 3 (Web UI + API)
  *
- * Tests the full user-facing flows: landing page, falla form, presupuesto form,
- * safety block, and budget discrepancy / no-discrepancy paths.
- *
- * Base URL: http://localhost:3000 (configured in playwright.config.ts).
- * The dev server is started automatically by the webServer config.
+ * Production-compatible tests: run against `npm run start` in CI.
+ * Dev-only tests (TraceViewer, /api/traces 400 path) live in
+ * increment3-dev.spec.ts and use playwright.dev.config.ts.
  *
  * Safety texts used come directly from safety-policy.ts / blocklist.ts phrases:
  *   "perdida de frenos" — exact phrase in blocklist, Stage 2 block.
@@ -217,46 +215,13 @@ test('E2E-08 DEF-03: importes argentinos "15.000" → reporte COMPLETE con total
   await expect(page.getByText('El total declarado coincide')).toBeVisible({ timeout: 15000 })
 })
 
-// ── E2E-09: Incremento 4 — trace viewer visible in dev mode ──────────────────
+// ── E2E-10: Incremento 4 — /api/traces aislado en producción ─────────────────
+// Security contract: the route returns 404 for ALL requests in production.
+// The dev-mode 400/MISSING_CASE_ID path is tested in increment3-dev.spec.ts.
 
-test('E2E-09 INC4: trace viewer renders in dev mode — collapsible, shows DEMO notice', async ({
-  page,
-}) => {
-  await page.goto('/falla')
-
-  await page.selectOption('#vehicleType', 'sedan')
-  await page.fill('#symptomText', 'El motor hace un ruido extraño al arrancar en frío.')
-  await page.selectOption('#occurrence', 'Al arrancar')
-  await page.click('button[type="submit"]')
-
-  // Wait for report
-  await expect(page.getByText('Hipótesis orientativas')).toBeVisible({ timeout: 15000 })
-
-  // The DEMO notice inside the trace section must be visible (always shown, not collapsible)
-  await expect(
-    page.getByText('MODO DEMO — Solo datos sintéticos. No ingresar datos reales.').first(),
-  ).toBeVisible()
-
-  // The trace section is collapsed by default — the toggle button should be present
-  await expect(page.getByRole('button', { name: /Trazas de nodos/i })).toBeVisible()
-
-  // Expand the trace viewer
-  await page.click('button:has-text("Trazas de nodos")')
-
-  // After expanding, the table with node names should be visible
-  await expect(page.getByRole('table', { name: /Tabla de nodos ejecutados/i })).toBeVisible()
-
-  // The "validator" node should appear in the trace
-  await expect(page.getByRole('cell', { name: 'validator', exact: true })).toBeVisible()
-})
-
-// ── E2E-10: Incremento 4 — /api/traces returns data in dev mode ──────────────
-
-test('E2E-10 INC4: GET /api/traces?caseId=... returns 400 for missing caseId', async ({
+test('E2E-10 INC4: GET /api/traces returns 404 in production — trace route isolation', async ({
   page,
 }) => {
   const response = await page.request.get('/api/traces')
-  expect(response.status()).toBe(400)
-  const body = await response.json() as { error: string }
-  expect(body.error).toBe('MISSING_CASE_ID')
+  expect(response.status()).toBe(404)
 })
