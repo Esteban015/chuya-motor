@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { LLMAdapter } from '@/agents/llm/llm-adapter'
-import { LLM_MOCK_MODEL } from '@/agents/llm/deterministic-mock-adapter'
+import type { LLMAdapter, LLMCompletionRequest } from '@/agents/llm/llm-adapter'
+import { extractJSON } from '@/agents/llm/llm-json-extract'
 import { BudgetLineSchema } from '@/domain/budget/budget'
 import type { GraphState } from '../graph-state'
 import { createTrace } from '../trace'
@@ -13,19 +13,31 @@ const BudgetParseResponseSchema = z.object({
   currency: z.enum(['ARS', 'USD']).nullable(),
 })
 
-function buildBudgetParsePrompt(state: GraphState): string {
-  // Marker enables deterministic mock routing
-  return [`[BUDGET_PARSE_REQUEST]`, state.userText].join('\n')
+function buildBudgetParseRequest(state: GraphState): LLMCompletionRequest {
+  return {
+    // [BUDGET_PARSE_REQUEST] marker enables deterministic mock routing
+    system:
+      '[BUDGET_PARSE_REQUEST]\nExtrae las líneas de presupuesto del texto del usuario. ' +
+      'Respondé ÚNICAMENTE con JSON válido. Sin bloques Markdown. Sin texto antes ni después del JSON. ' +
+      'Estructura exacta: { "lines": [{ "status": "confirmed"|"missing", "description": string, "amountMinorUnit": integer, "currency": "ARS"|"USD" }], "declaredTotalMinorUnit": integer|null, "currency": "ARS"|"USD"|null }. ' +
+      'Reglas: líneas con importe → status="confirmed", amountMinorUnit=importe*100 (entero, sin decimales), currency="ARS" o "USD". ' +
+      'Líneas sin importe → { "status": "missing", "description": string } (omitir amountMinorUnit y currency). ' +
+      'Si hay línea de Total: declaredTotalMinorUnit=total*100. ' +
+      'Ejemplo: "Aceite: 4500" → { "status": "confirmed", "description": "Aceite", "amountMinorUnit": 450000, "currency": "ARS" }. ' +
+      'Máximo 50 líneas. No inventar precios faltantes.',
+    userContent: state.userText,  // user content isolated — never mixed with instructions
+  }
 }
 
 export function createBudgetParserNode(llmAdapter: LLMAdapter) {
   return async function budgetParserNode(state: GraphState): Promise<Partial<GraphState>> {
     const startTime = Date.now()
     const { caseId, dataLabel } = state
+    const model = llmAdapter.modelId
 
     try {
-      const prompt = buildBudgetParsePrompt(state)
-      const result = await llmAdapter.complete(prompt)
+      const req = buildBudgetParseRequest(state)
+      const result = await llmAdapter.complete(req)
 
       if (!result.ok) {
         return {
@@ -34,10 +46,11 @@ export function createBudgetParserNode(llmAdapter: LLMAdapter) {
           traces: [
             createTrace(caseId, NODE_ID, startTime, 'fallback_used', {
               llmCalled: true,
-              llmModel: LLM_MOCK_MODEL,
+              llmModel: model,
               errorCode: result.error.code,
               dataLabel,
               fallbackActivated: true,
+              resultType: 'budget_llm_error',
             }),
           ],
         }
@@ -45,7 +58,8 @@ export function createBudgetParserNode(llmAdapter: LLMAdapter) {
 
       let parsed: unknown
       try {
-        parsed = JSON.parse(result.content)
+        // extractJSON strips markdown code blocks (Gemini Flash frequently adds them)
+        parsed = JSON.parse(extractJSON(result.content))
       } catch {
         return {
           fallback: true,
@@ -53,10 +67,12 @@ export function createBudgetParserNode(llmAdapter: LLMAdapter) {
           traces: [
             createTrace(caseId, NODE_ID, startTime, 'fallback_used', {
               llmCalled: true,
-              llmModel: LLM_MOCK_MODEL,
+              llmModel: model,
               errorCode: 'LLM_SCHEMA_VIOLATION',
               dataLabel,
               fallbackActivated: true,
+              tokensUsed: result.tokensUsed,
+              resultType: 'budget_schema_error',
             }),
           ],
         }
@@ -70,10 +86,12 @@ export function createBudgetParserNode(llmAdapter: LLMAdapter) {
           traces: [
             createTrace(caseId, NODE_ID, startTime, 'fallback_used', {
               llmCalled: true,
-              llmModel: LLM_MOCK_MODEL,
+              llmModel: model,
               errorCode: 'LLM_SCHEMA_VIOLATION',
               dataLabel,
               fallbackActivated: true,
+              tokensUsed: result.tokensUsed,
+              resultType: 'budget_schema_error',
             }),
           ],
         }
@@ -85,8 +103,10 @@ export function createBudgetParserNode(llmAdapter: LLMAdapter) {
         traces: [
           createTrace(caseId, NODE_ID, startTime, 'success', {
             llmCalled: true,
-            llmModel: LLM_MOCK_MODEL,
+            llmModel: model,
             dataLabel,
+            tokensUsed: result.tokensUsed,
+            resultType: 'budget_parsed',
           }),
         ],
       }
@@ -100,6 +120,7 @@ export function createBudgetParserNode(llmAdapter: LLMAdapter) {
             errorCode: 'BUDGET_PARSER_INTERNAL_ERROR',
             dataLabel,
             fallbackActivated: true,
+            resultType: 'budget_parser_failed',
           }),
         ],
       }

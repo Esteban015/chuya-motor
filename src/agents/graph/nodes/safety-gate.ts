@@ -26,6 +26,7 @@ export async function safetyGateNode(state: GraphState): Promise<Partial<GraphSt
         createTrace(caseId, NODE_ID, startTime, safetyResult.blocked ? 'blocked' : 'success', {
           policyVersion: safetyResult.policyVersion,
           dataLabel,
+          resultType: safetyResult.blocked ? 'safety_blocked' : 'safety_passed',
         }),
       ],
     }
@@ -38,6 +39,7 @@ export async function safetyGateNode(state: GraphState): Promise<Partial<GraphSt
           errorCode: 'SAFETY_GATE_INTERNAL_ERROR',
           dataLabel,
           fallbackActivated: true,
+          resultType: 'safety_failed',
         }),
       ],
     }

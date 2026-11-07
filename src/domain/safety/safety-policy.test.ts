@@ -323,6 +323,120 @@ describe('FP-02 fix: persistence markers anulan early exit de past_description',
   })
 })
 
+// ─── Regresiones DEF-01: presupuesto estructurado ────────────────────────────
+
+describe('DEF-01: presupuesto estructurado no bloqueado por keyword de repuesto', () => {
+  it('DEF-01-A: "Filtro de combustible" en presupuesto → NOT blocked, budget_structured', () => {
+    const result = checkSafetyGate('Aceite motor: 4500\nFiltro de combustible: 2000\nTotal: 6500')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('budget_structured')
+  })
+
+  it('DEF-01-B: "Pastillas de freno" en presupuesto → NOT blocked, budget_structured', () => {
+    const result = checkSafetyGate('Pastillas de freno delanteras: 8500\nMano de obra: 3000\nTotal: 11500')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('budget_structured')
+  })
+
+  it('DEF-01-C: presupuesto con sensor de temperatura como ítem → NOT blocked', () => {
+    // "temperatura" is a safety keyword (overheat_severe) but no DIY verb stem present
+    const result = checkSafetyGate('Sensor de temperatura motor: 1500\nAceite motor: 4500\nTotal: 6000')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('budget_structured')
+  })
+
+  it('DEF-01-D: presupuesto con GNC (sin verbo DIY) → NOT blocked', () => {
+    // "gnc" is a safety keyword but "completo" / "mano de obra" have no DIY verb stems
+    const result = checkSafetyGate('Kit GNC completo: 85000\nMano de obra: 15000\nTotal: 100000')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('budget_structured')
+  })
+
+  it('DEF-01-NOTE: presupuesto con "reparación" (noun) + keyword → BLOCKED (SEC-01, raíz verbal compartida)', () => {
+    // "reparación" stems to 'repar' matching ACTION_VERB_STEMS — conservative block is correct per D-1
+    // This is a known SEC-01 limitation: noun/verb stem ambiguity. Documented, not a regression.
+    const result = checkSafetyGate('Airbag sensor reparación: 5000\nAceite: 4500\nTotal: 9500')
+    expect(result.blocked).toBe(true)
+    expect(result.intentClassification).toBe('diy_intent')
+  })
+
+  it('DEF-01-BLK-phrase: presupuesto + frase peligrosa exacta → BLOCKED (Stage 2 prevalece)', () => {
+    // Stage 2 runs before intent — always blocks dangerous phrases regardless of budget context
+    const result = checkSafetyGate('Aceite: 4500\nTotal: 4500\nAdemás hay fuga de combustible bajo el auto')
+    expect(result.blocked).toBe(true)
+    expect(result.triggeredCategory).toBe('fuel_leak')
+  })
+
+  it('DEF-01-BLK-diy: presupuesto + verbo DIY → BLOCKED (Stage 3 prevalece)', () => {
+    // diy_intent checked before budget_structured — DIY verb still blocks
+    const result = checkSafetyGate('Cambio las pastillas de freno: 1500\nTotal: 1500')
+    expect(result.blocked).toBe(true)
+    expect(result.intentClassification).toBe('diy_intent')
+  })
+
+  it('DEF-01-BLK-diy2: "instalo frenos: 2000" → BLOCKED (DIY + frenos keyword)', () => {
+    const result = checkSafetyGate('Instalo los frenos yo mismo: 2000\nTotal: 2000')
+    expect(result.blocked).toBe(true)
+    expect(result.intentClassification).toBe('diy_intent')
+  })
+
+  it('DEF-01-single: 1 sola línea con combustible → ambiguous → BLOCKED (no es presupuesto)', () => {
+    // Less than 2 item lines → not budget_structured → ambiguous → AM-01 blocks
+    const result = checkSafetyGate('Filtro de combustible: 2000')
+    expect(result.blocked).toBe(true)
+    expect(result.intentClassification).toBe('ambiguous')
+  })
+})
+
+// ─── Regresiones DEF-02: marcadores educativos con conjugaciones ──────────────
+
+describe('DEF-02: consultas educativas con conjugaciones plurales → NOT blocked', () => {
+  it('DEF-02-A: "¿Cómo funcionan los frenos?" → NOT blocked, informational', () => {
+    const result = checkSafetyGate('¿Cómo funcionan los frenos de mi auto?')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('informational')
+  })
+
+  it('DEF-02-B: "¿Para qué sirven las pastillas de freno?" → NOT blocked', () => {
+    const result = checkSafetyGate('¿Para qué sirven las pastillas de freno?')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('informational')
+  })
+
+  it('DEF-02-C: "¿Qué causan los frenos recalentados?" → NOT blocked', () => {
+    const result = checkSafetyGate('¿Qué causan los frenos recalentados en el sistema?')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('informational')
+  })
+
+  it('DEF-02-D: forma singular "funciona" sigue siendo informational (regresión)', () => {
+    const result = checkSafetyGate('cómo funciona el sistema de frenos')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('informational')
+  })
+
+  it('DEF-02-E: "sirve" singular sigue siendo informational (regresión)', () => {
+    const result = checkSafetyGate('para qué sirve el ABS')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('informational')
+  })
+
+  it('DEF-02-BLK-diy: DIY + frenos → BLOCKED a pesar de "funcionan" (diy_intent prevalece)', () => {
+    // If DIY verb is present, diy_intent is classified before informational check
+    const result = checkSafetyGate('Quiero saber cómo funcionan para cambiar los frenos yo mismo')
+    expect(result.blocked).toBe(true)
+    expect(result.intentClassification).toBe('diy_intent')
+  })
+
+  it('DEF-02-BLK-sangrar: "quiero sangrar el circuito de frenos" → BLOCKED', () => {
+    const result = checkSafetyGate('Quiero sangrar el circuito de frenos')
+    expect(result.blocked).toBe(true)
+    expect(result.intentClassification).toBe('diy_intent')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 describe('FP-02 / AM-01: regresiones críticas de fixes previos', () => {
   it('REG: frase exacta con profesional → sigue bloqueando (FN-01 no regresiona)', () => {
     const result = checkSafetyGate('El mecánico me dijo que hay fuga de GNC')

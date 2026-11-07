@@ -1,0 +1,9 @@
+{
+  "result": {
+    "status": 400,
+    "body": {
+      "error": "VALIDATION_ERROR",
+      "message": "El texto debe tener al menos 10 caracteres."
+    }
+  }
+}

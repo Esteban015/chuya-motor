@@ -10,7 +10,7 @@ export async function budgetCalculatorNode(state: GraphState): Promise<Partial<G
 
   if (state.fallback || !state.budgetLines) {
     return {
-      traces: [createTrace(caseId, NODE_ID, startTime, 'skipped', { dataLabel })],
+      traces: [createTrace(caseId, NODE_ID, startTime, 'skipped', { dataLabel, resultType: 'budget_skipped' })],
     }
   }
 
@@ -35,7 +35,10 @@ export async function budgetCalculatorNode(state: GraphState): Promise<Partial<G
     return {
       budgetState,
       warnings,
-      traces: [createTrace(caseId, NODE_ID, startTime, 'success', { dataLabel })],
+      traces: [createTrace(caseId, NODE_ID, startTime, 'success', {
+        dataLabel,
+        resultType: `budget_${budgetState.completenessStatus.toLowerCase()}`,
+      })],
     }
   } catch {
     return {
@@ -46,6 +49,7 @@ export async function budgetCalculatorNode(state: GraphState): Promise<Partial<G
           errorCode: 'BUDGET_CALC_INTERNAL_ERROR',
           dataLabel,
           fallbackActivated: true,
+          resultType: 'budget_failed',
         }),
       ],
     }

@@ -11,7 +11,7 @@ export function createEvaluatorNode(documentSource: DocumentSourcePort) {
 
     if (state.fallback) {
       return {
-        traces: [createTrace(caseId, NODE_ID, startTime, 'skipped', { dataLabel })],
+        traces: [createTrace(caseId, NODE_ID, startTime, 'skipped', { dataLabel, resultType: 'evaluator_skipped' })],
       }
     }
 
@@ -61,7 +61,10 @@ export function createEvaluatorNode(documentSource: DocumentSourcePort) {
       return {
         evidenceIds,
         missingInformation,
-        traces: [createTrace(caseId, NODE_ID, startTime, 'success', { dataLabel })],
+        traces: [createTrace(caseId, NODE_ID, startTime, 'success', {
+          dataLabel,
+          resultType: 'evidence_retrieved',
+        })],
       }
     } catch {
       return {
@@ -72,6 +75,7 @@ export function createEvaluatorNode(documentSource: DocumentSourcePort) {
             errorCode: 'EVALUATOR_INTERNAL_ERROR',
             dataLabel,
             fallbackActivated: true,
+            resultType: 'evaluator_failed',
           }),
         ],
       }

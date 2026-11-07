@@ -1,7 +1,7 @@
 // Incremento 2 — Deterministic mock LLM for integration tests.
 // Returns structured responses based on prompt markers — never calls a real LLM.
 // Same input always produces the same output (deterministic contract).
-import type { LLMAdapter, LLMResult } from './llm-adapter'
+import type { LLMAdapter, LLMCompletionRequest, LLMResult } from './llm-adapter'
 import type { BudgetLine } from '@/domain/budget/budget'
 
 export const LLM_MOCK_MODEL = 'deterministic-mock-v1'
@@ -73,8 +73,7 @@ function parseBudgetFromText(text: string): MockBudgetParseResponse {
   let match: RegExpExecArray | null
   while ((match = confirmedRe.exec(text)) !== null) {
     const description = match[1].trim()
-    const rawAmount = match[2].replace(',', '.')
-    const amount = parseFloat(rawAmount)
+    const amount = parseAmountEsAR(match[2])
     if (isNaN(amount) || description.length === 0) continue
     // Exclude "total / subtotal" lines — handled separately as declaredTotalMinorUnit
     if (/^(total|subtotal)$/i.test(description)) continue
@@ -93,11 +92,11 @@ function parseBudgetFromText(text: string): MockBudgetParseResponse {
     return { lines: [], declaredTotalMinorUnit: null, currency: null }
   }
 
-  // Declared total (optional)
+  // Declared total (optional) — parsed with es-AR locale rules
   const totalRe = /(?:total|subtotal):\s*\$?\s*([\d.,]+)/i
   const totalMatch = totalRe.exec(text)
   const declaredTotalMinorUnit = totalMatch
-    ? Math.round(parseFloat(totalMatch[1].replace(',', '.')) * 100)
+    ? Math.round(parseAmountEsAR(totalMatch[1]) * 100)
     : null
 
   const confirmedCurrencies = new Set(
@@ -110,16 +109,44 @@ function parseBudgetFromText(text: string): MockBudgetParseResponse {
   return { lines, declaredTotalMinorUnit, currency }
 }
 
+// Parse a monetary amount string using es-AR locale rules (DEF-03 fix):
+//   - Dot = thousands separator when followed by exactly 3 digits (e.g. "15.000" → 15000)
+//   - Comma = decimal separator (e.g. "4500,50" → 4500.50)
+//   - Combined: "15.000,50" → 15000.50
+//   - Plain integer or simple decimal: "4500" / "15.5" handled as-is
+// Never uses parseFloat on localized strings directly.
+function parseAmountEsAR(raw: string): number {
+  const s = raw.replace(/[$\s]/g, '').trim()
+
+  // es-AR full: "15.000,50" or "1.500,00" — thousands dot + decimal comma
+  if (/^\d{1,3}(\.\d{3})+(,\d{1,2})?$/.test(s)) {
+    const noThousands = s.replace(/\./g, '')
+    return parseFloat(noThousands.replace(',', '.'))
+  }
+
+  // es-AR decimal only: "1500,50"
+  if (/^\d+,\d{1,2}$/.test(s)) {
+    return parseFloat(s.replace(',', '.'))
+  }
+
+  // Plain integer or simple decimal: "4500", "15.5"
+  return parseFloat(s.replace(',', '.'))
+}
+
 export class DeterministicMockLLMAdapter implements LLMAdapter {
-  async complete(prompt: string): Promise<LLMResult> {
-    if (prompt.includes('[DIAGNOSIS_REQUEST]')) {
+  readonly modelId = LLM_MOCK_MODEL
+
+  async complete(req: LLMCompletionRequest): Promise<LLMResult> {
+    // Marker-based routing: check system field (and userContent for backward compat)
+    const combined = `${req.system}\n${req.userContent}`
+
+    if (combined.includes('[DIAGNOSIS_REQUEST]')) {
       return { ok: true, content: JSON.stringify(MOCK_DIAGNOSIS) }
     }
 
-    if (prompt.includes('[BUDGET_PARSE_REQUEST]')) {
-      const textSection = /\[BUDGET_PARSE_REQUEST\]\n([\s\S]*)/i.exec(prompt)
-      const textToParse = textSection?.[1] ?? prompt
-      const result = parseBudgetFromText(textToParse)
+    if (combined.includes('[BUDGET_PARSE_REQUEST]')) {
+      // userContent is the user budget text — parse it directly
+      const result = parseBudgetFromText(req.userContent)
       return { ok: true, content: JSON.stringify(result) }
     }
 
