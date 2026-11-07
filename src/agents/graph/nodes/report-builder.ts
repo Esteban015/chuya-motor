@@ -68,6 +68,7 @@ export async function reportBuilderNode(state: GraphState): Promise<Partial<Grap
         createTrace(caseId, NODE_ID, startTime, state.fallback ? 'fallback_used' : 'success', {
           dataLabel,
           fallbackActivated: state.fallback,
+          resultType: state.safety?.blocked ? 'report_blocked' : state.fallback ? 'report_fallback' : 'report_built',
         }),
       ],
     }
@@ -97,6 +98,7 @@ export async function reportBuilderNode(state: GraphState): Promise<Partial<Grap
           errorCode: 'REPORT_BUILDER_INTERNAL_ERROR',
           dataLabel,
           fallbackActivated: true,
+          resultType: 'report_emergency_fallback',
         }),
       ],
     }

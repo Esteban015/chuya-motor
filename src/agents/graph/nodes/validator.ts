@@ -20,6 +20,7 @@ export async function validatorNode(state: GraphState): Promise<Partial<GraphSta
             errorCode: 'VALIDATION_TEXT_TOO_SHORT',
             dataLabel,
             fallbackActivated: true,
+            resultType: 'validation_failed',
           }),
         ],
       }
@@ -33,7 +34,7 @@ export async function validatorNode(state: GraphState): Promise<Partial<GraphSta
 
     return {
       missingInformation,
-      traces: [createTrace(caseId, NODE_ID, startTime, 'success', { dataLabel })],
+      traces: [createTrace(caseId, NODE_ID, startTime, 'success', { dataLabel, resultType: 'validation_passed' })],
     }
   } catch {
     return {
@@ -44,6 +45,7 @@ export async function validatorNode(state: GraphState): Promise<Partial<GraphSta
           errorCode: 'VALIDATOR_INTERNAL_ERROR',
           dataLabel,
           fallbackActivated: true,
+          resultType: 'validation_failed',
         }),
       ],
     }

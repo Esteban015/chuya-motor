@@ -1,7 +1,7 @@
 // D-1: Versioned safety signal catalog.
 // Each group: category, keywords (single tokens), phrases (multi-token).
 // Policy version bumped when groups are added/changed.
-export const SAFETY_POLICY_VERSION = '1.1.0'
+export const SAFETY_POLICY_VERSION = '1.2.0'
 
 export interface SignalGroup {
   category: string

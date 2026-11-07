@@ -26,8 +26,9 @@ function detectRoute(userText: string): RouteIntent {
 
   if (BUDGET_KEYWORDS.some((k) => lower.includes(k))) return 'budget'
 
-  // "item: 3+ digit number" structure — budget-like (avoids false positives on e.g. "v8: 1")
-  if (/^.+:\s*\d{3,}/m.test(userText)) return 'budget'
+  // "item: 3+ digit number" OR "item: N.NNN" (es-AR thousands format, DEF-03 fix).
+  // Avoids false positives on "v8: 1" (< 3 consecutive digits, no thousands format).
+  if (/^.+:\s*\$?\s*(\d{3,}|\d{1,3}(\.\d{3})+)/m.test(userText)) return 'budget'
 
   return 'symptom'
 }
@@ -45,7 +46,10 @@ export function routerNode(state: GraphState): Partial<GraphState> {
 
     return {
       route,
-      traces: [createTrace(caseId, NODE_ID, startTime, 'success', { dataLabel })],
+      traces: [createTrace(caseId, NODE_ID, startTime, 'success', {
+        dataLabel,
+        resultType: `route_${route}`,
+      })],
     }
   } catch {
     return {
@@ -56,6 +60,7 @@ export function routerNode(state: GraphState): Partial<GraphState> {
           errorCode: 'ROUTER_INTERNAL_ERROR',
           dataLabel,
           fallbackActivated: true,
+          resultType: 'route_failed',
         }),
       ],
     }

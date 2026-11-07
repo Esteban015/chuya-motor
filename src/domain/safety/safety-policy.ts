@@ -57,13 +57,20 @@ export function stemToken(token: string): string {
 }
 
 // Stage 4: Intent classification
-// Order of precedence: professional_context > diy_intent > past_description > informational > ambiguous
+// Order of precedence:
+//   professional_context > diy_intent > past_description > budget_structured > informational > ambiguous
 //
 // AM-01 (DECISIONS.md D-1): "ambiguous → BLOQUEAR por precaución" — implemented.
 // Inputs without a clear educational, professional, DIY, or past signal that contain a safety
 // keyword are classified 'ambiguous' and blocked conservatively (checkSafetyGate Stage AM-01).
 // Educational queries are protected by EDUCATIONAL_MARKERS: their presence classifies as
 // 'informational' even when a safety keyword is also present.
+//
+// budget_structured (v1.2.0, DEF-01 fix): a commercial listing of parts/services
+// (≥2 lines "description: amount") is not a live-symptom report. Part names like "Filtro de
+// combustible" or "Pastillas de freno" are not operational safety signals. Stage 2 (exact
+// phrase match) and Stage 3 (DIY co-occurrence) remain fully enforced — budget_structured
+// only bypasses AM-01 keyword blocking.
 //
 // FP-02 (DECISIONS.md D-1): professional_context early exit is suppressed when PERSISTENCE_MARKERS
 // are present — the problem is active/ongoing despite the professional visit.
@@ -72,6 +79,7 @@ export type IntentClassification =
   | 'professional_context'
   | 'diy_intent'
   | 'past_description'
+  | 'budget_structured'
   | 'informational'
   | 'ambiguous'
 
@@ -120,15 +128,32 @@ const PERSISTENCE_MARKERS = [
   'peor', 'empeoro',
 ]
 
-// Educational markers — tokens that signal the user wants to understand, not intervene.
+// Educational markers — base forms; matched via stemToken so conjugated forms are also covered.
+// E.g. "funcionan" → stem "funcion" matches stem of "funciona" → classifies as 'informational'.
 // When present, the query is classified 'informational' even if a safety keyword is detected.
-// This protects legitimate diagnostic questions from AM-01 blocking (DECISIONS.md D-1).
+// This protects legitimate diagnostic questions from AM-01 blocking (DECISIONS.md D-1, v1.2.0).
+// NOTE: matching is stem-based (via stemToken), not exact-token, to cover plural conjugations.
 const EDUCATIONAL_MARKERS = [
   'funciona', 'sirve', 'significa', 'causa', 'provoca',
   'implica', 'diferencia', 'explicar', 'entender', 'saber', 'tipos',
 ]
 
-function classifyIntent(normalized: string): IntentClassification {
+// Precomputed stems of EDUCATIONAL_MARKERS for efficient stem-based matching.
+const EDUCATIONAL_MARKER_STEMS = EDUCATIONAL_MARKERS.map((m) => stemToken(normalizeText(m)))
+
+// Returns true when the original (non-normalized) text has the structure of a commercial budget:
+// ≥2 lines matching "description: amount", indicating a list of parts/services — not a symptom.
+// Uses original text because normalizeText removes colons and punctuation.
+// Called from classifyIntent to identify budget_structured intent (v1.2.0, DEF-01 fix).
+function detectsBudgetStructure(originalText: string): boolean {
+  const lines = originalText.split('\n')
+  const itemLines = lines.filter((line) =>
+    /^[^:]+:\s*\$?\s*[\d.,]+/.test(line.trim()),
+  )
+  return itemLines.length >= 2
+}
+
+function classifyIntent(normalized: string, originalText: string): IntentClassification {
   const tokens = normalized.split(' ')
   const stems = tokens.map(stemToken)
 
@@ -147,8 +172,13 @@ function classifyIntent(normalized: string): IntentClassification {
   // has not resolved — the condition is current (FP-02).
   if (hasPastMarker && !hasPersistence) return 'past_description'
 
+  // Budget structured: commercial listing of parts/services (≥2 "item: amount" lines).
+  // Bypasses AM-01 keyword blocking — Stage 2 and Stage 3 remain enforced.
+  if (detectsBudgetStructure(originalText)) return 'budget_structured'
+
   // Educational markers classify as informational even with safety keywords (AM-01).
-  const hasEducational = tokens.some((t) => EDUCATIONAL_MARKERS.includes(t))
+  // Stem-based matching covers conjugated forms (DEF-02 fix, v1.2.0).
+  const hasEducational = stems.some((s) => EDUCATIONAL_MARKER_STEMS.some((es) => s === es))
   if (hasEducational) return 'informational'
 
   // No clear signal — ambiguous. checkSafetyGate will block if a safety keyword is present.
@@ -210,7 +240,7 @@ export function checkSafetyGate(userText: string): SafetyGateResult {
   // Must run BEFORE intent classification so professional context cannot bypass a live danger phrase.
   const phraseMatch = findExactPhraseMatch(normalized)
   if (phraseMatch) {
-    const intent = classifyIntent(normalized)
+    const intent = classifyIntent(normalized, userText)
     return {
       blocked: true,
       triggeredCategory: phraseMatch.category,
@@ -221,7 +251,7 @@ export function checkSafetyGate(userText: string): SafetyGateResult {
     }
   }
 
-  const intent = classifyIntent(normalized)
+  const intent = classifyIntent(normalized, userText)
 
   // Professional context (after phrase check): suppress co-occurrence and ambiguous blocks.
   if (intent === 'professional_context') {
@@ -235,13 +265,28 @@ export function checkSafetyGate(userText: string): SafetyGateResult {
     }
   }
 
-  // Stage 3: keyword co-occurrence — keyword + action verb → block (diy_intent confirmed)
+  // Stage 3: keyword co-occurrence — keyword + action verb → block (diy_intent confirmed).
+  // Runs before budget_structured check so DIY intent in a budget still blocks.
   const stemMatch = findStemCoOccurrence(normalized, intent)
   if (stemMatch) {
     return {
       blocked: true,
       triggeredCategory: stemMatch.category,
       triggeredSignal: stemMatch.signal,
+      intentClassification: intent,
+      policyVersion: SAFETY_POLICY_VERSION,
+      coverageDisclaimer: COVERAGE_DISCLAIMER,
+    }
+  }
+
+  // Budget structured (v1.2.0, DEF-01): commercial listing of parts/services.
+  // Stage 2 and Stage 3 have already run — no dangerous phrase or DIY verb present.
+  // Part names may contain safety tokens (e.g. "Filtro de combustible") that must not block.
+  if (intent === 'budget_structured') {
+    return {
+      blocked: false,
+      triggeredCategory: null,
+      triggeredSignal: null,
       intentClassification: intent,
       policyVersion: SAFETY_POLICY_VERSION,
       coverageDisclaimer: COVERAGE_DISCLAIMER,

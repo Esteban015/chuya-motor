@@ -13,6 +13,8 @@ export interface TraceMetadata {
   dataLabel: 'synthetic_demo' | 'user_input' | 'unknown'
   errorCode?: string        // structured code only; never free-text message
   fallbackActivated: boolean
+  resultType?: string       // semantic description of output kind (no content); e.g. 'hypotheses_generated'
+  tokensUsed?: number       // token usage when available from real LLM (optional, mock=undefined)
 }
 
 export interface CreateTraceOptions {
@@ -23,6 +25,8 @@ export interface CreateTraceOptions {
   dataLabel?: TraceMetadata['dataLabel']
   errorCode?: string
   fallbackActivated?: boolean
+  resultType?: string
+  tokensUsed?: number
 }
 
 export function createTrace(
@@ -47,6 +51,8 @@ export function createTrace(
   if (options.llmModel !== undefined) trace.llmModel = options.llmModel
   if (options.policyVersion !== undefined) trace.policyVersion = options.policyVersion
   if (options.errorCode !== undefined) trace.errorCode = options.errorCode
+  if (options.resultType !== undefined) trace.resultType = options.resultType
+  if (options.tokensUsed !== undefined) trace.tokensUsed = options.tokensUsed
 
   // TRACE_VERBOSE: strict conjunction — only when explicitly enabled AND not production (Ajuste C)
   if (process.env['TRACE_VERBOSE'] === 'true' && process.env['NODE_ENV'] !== 'production') {
