@@ -30,6 +30,7 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-opus-4-8': { inputPer1kTokens: 0.015, outputPer1kTokens: 0.075 },
   // Gemini free-tier models — $0 ONLY when confirmed AI Studio key + free tier.
   // If billing is enabled on your GCP project, real charges will apply.
+  'gemini-3.5-flash-lite': { inputPer1kTokens: 0, outputPer1kTokens: 0 },
   'gemini-2.5-flash': { inputPer1kTokens: 0, outputPer1kTokens: 0 },
   'gemini-2.5-flash-preview-04-17': { inputPer1kTokens: 0, outputPer1kTokens: 0 },
   'gemini-2.0-flash': { inputPer1kTokens: 0, outputPer1kTokens: 0 },
@@ -49,6 +50,10 @@ export interface CostEstimate {
 
 export const COST_DISCLAIMER =
   'Cost estimate is approximate and may be outdated. Consult https://www.anthropic.com/pricing for current rates.'
+
+/** Provider-agnostic disclaimer for campaign reports that may use non-Anthropic models. */
+export const CAMPAIGN_COST_DISCLAIMER =
+  'Cost estimate is approximate and may be outdated. Consult your model provider\'s pricing page for current rates.'
 
 export function estimateCost(
   totalTokens: number,

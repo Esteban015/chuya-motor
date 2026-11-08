@@ -58,11 +58,11 @@ export function stemToken(token: string): string {
 
 // Stage 4: Intent classification
 // Order of precedence:
-//   professional_context > diy_intent > past_description > budget_structured > informational > ambiguous
+//   professional_context > diy_intent > past_description > budget_structured > informational > symptom_description > ambiguous
 //
 // AM-01 (DECISIONS.md D-1): "ambiguous → BLOQUEAR por precaución" — implemented.
-// Inputs without a clear educational, professional, DIY, or past signal that contain a safety
-// keyword are classified 'ambiguous' and blocked conservatively (checkSafetyGate Stage AM-01).
+// Inputs without a clear educational, professional, DIY, past, or symptom signal that contain a
+// safety keyword are classified 'ambiguous' and blocked conservatively (checkSafetyGate Stage AM-01).
 // Educational queries are protected by EDUCATIONAL_MARKERS: their presence classifies as
 // 'informational' even when a safety keyword is also present.
 //
@@ -71,6 +71,14 @@ export function stemToken(token: string): string {
 // combustible" or "Pastillas de freno" are not operational safety signals. Stage 2 (exact
 // phrase match) and Stage 3 (DIY co-occurrence) remain fully enforced — budget_structured
 // only bypasses AM-01 keyword blocking.
+//
+// symptom_description (v1.3.0, FASE 5D.1.1): inputs containing "al/cuando + [driving verb]"
+// describe when a symptom occurs, not DIY intent ("al frenar hace ruido" = temporal descriptor).
+// ACTION_VERB_EXCLUSIONS prevents "hace/hacen" (3rd-person of "hacer" = machine behavior) from
+// triggering diy_intent — "el motor hace ruido" is not a repair request.
+// symptom_description is checked AFTER educational markers so "qué causa el ruido al frenar"
+// stays 'informational'. Stage 2 (exact phrase) and Stage 3 (diy_intent co-occurrence) remain
+// fully enforced — symptom_description only bypasses the AM-01 conservative ambiguous block.
 //
 // FP-02 (DECISIONS.md D-1): professional_context early exit is suppressed when PERSISTENCE_MARKERS
 // are present — the problem is active/ongoing despite the professional visit.
@@ -82,6 +90,20 @@ export type IntentClassification =
   | 'budget_structured'
   | 'informational'
   | 'ambiguous'
+  | 'symptom_description'
+
+// 3rd-person forms of "hacer" excluded from diy_intent: they describe what the machine does
+// ("el motor hace ruido", "los frenos hacen calor"), not what the user intends to do.
+// Only present-tense 3rd-person forms are excluded; "hacer" (infinitive) and "hago" (1st person)
+// still trigger diy_intent because they describe user actions ("voy a hacer", "hago el cambio").
+const ACTION_VERB_EXCLUSIONS = new Set(['hace', 'hacen'])
+
+// Stem roots of verbs describing driving actions used in temporal phrases ("al frenar",
+// "cuando acelera"). Detecting these allows the system to classify "al/cuando + [driving verb]"
+// as a symptom context descriptor rather than diy_intent or ambiguous input.
+// Checked AFTER educational markers (so "qué causa el ruido al frenar" stays 'informational')
+// and AFTER diy_intent (so mixed inputs like "al frenar arreglo los frenos" stay blocked).
+const SYMPTOM_CONTEXT_STEMS = ['fren', 'arranc', 'aceler', 'conduc', 'manej', 'gir']
 
 // Action verb stems that indicate the user wants to perform a repair themselves
 const ACTION_VERB_STEMS = [
@@ -164,7 +186,10 @@ function classifyIntent(normalized: string, originalText: string): IntentClassif
   // is still active despite the professional visit (FP-02).
   if (hasProfessional && !hasPersistence) return 'professional_context'
 
-  const hasActionVerb = stems.some((s) => ACTION_VERB_STEMS.some((v) => s.startsWith(v)))
+  // Exclude 3rd-person "hacer" tokens: "hace/hacen" describe what the machine does, not DIY intent.
+  const hasActionVerb = tokens.some(
+    (t, i) => !ACTION_VERB_EXCLUSIONS.has(t) && ACTION_VERB_STEMS.some((v) => stems[i]!.startsWith(v)),
+  )
   if (hasActionVerb) return 'diy_intent'
 
   const hasPastMarker = tokens.some((t) => PAST_MARKERS.includes(t))
@@ -178,8 +203,18 @@ function classifyIntent(normalized: string, originalText: string): IntentClassif
 
   // Educational markers classify as informational even with safety keywords (AM-01).
   // Stem-based matching covers conjugated forms (DEF-02 fix, v1.2.0).
+  // Checked BEFORE symptom_context so "qué causa el ruido al frenar" stays 'informational'.
   const hasEducational = stems.some((s) => EDUCATIONAL_MARKER_STEMS.some((es) => s === es))
   if (hasEducational) return 'informational'
+
+  // Symptom context: "al/cuando + [driving verb]" describes when a symptom occurs (FASE 5D.1.1).
+  // Only triggers for infinitive and conjugated forms of driving verbs after a temporal marker.
+  const hasSymptomContext = tokens.some((t, i) => {
+    if (t !== 'al' && t !== 'cuando') return false
+    const nextStem = stems[i + 1]
+    return nextStem !== undefined && SYMPTOM_CONTEXT_STEMS.some((s) => nextStem.startsWith(s))
+  })
+  if (hasSymptomContext) return 'symptom_description'
 
   // No clear signal — ambiguous. checkSafetyGate will block if a safety keyword is present.
   return 'ambiguous'

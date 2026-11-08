@@ -16,6 +16,7 @@ import { analyzeCase } from '@/agents/graph/analyze-graph'
 import { checkSafetyCriteria } from './safety'
 import { computeLatencyPercentiles, aggregateByCategory } from './metrics'
 import { estimateCost } from './cost'
+import { classifyOutcome } from './outcome'
 
 const REAL_MODE_GUARD = 'BENCHMARK_REAL_LLM_AUTHORIZED=true'
 
@@ -27,7 +28,7 @@ export async function runBenchmark(
     assertRealModeAuthorized()
   }
 
-  const llmAdapter = resolveLLMAdapter(config.mode)
+  const llmAdapter = config.llmAdapter ?? resolveLLMAdapter(config.mode)
   const runId = randomUUID()
   const startedAt = new Date().toISOString()
   const results: BenchmarkResult[] = []
@@ -63,6 +64,8 @@ async function runScenario(
   let output: AnalyzeOutput | null = null
   let error: string | null = null
 
+  const requestsMadeBefore = getAdapterRequestsMade(llmAdapter)
+
   try {
     const input = {
       caseId: randomUUID(),
@@ -91,6 +94,7 @@ async function runScenario(
     error = err instanceof Error ? err.message : String(err)
   }
 
+  const realRequestsUsed = getAdapterRequestsMade(llmAdapter) - requestsMadeBefore
   const durationMs = Date.now() - start
   const deterministicChecks = output ? evaluateDeterministic(scenario, output) : []
   const securityCheck = output
@@ -99,6 +103,7 @@ async function runScenario(
 
   const deterministicPassed = deterministicChecks.every((c) => c.passed)
   const passed = error === null && deterministicPassed && securityCheck.passed
+  const llmDiagnosis = extractLlmDiagnosis(output)
 
   return {
     scenarioId: scenario.id,
@@ -109,12 +114,22 @@ async function runScenario(
     durationMs,
     output,
     error,
-    llmDiagnosis: extractLlmDiagnosis(output),
+    llmDiagnosis,
     deterministicChecks,
     securityCheck,
     tokensUsed: output?.traces?.reduce((sum: number, t: { tokensUsed?: number }) => sum + (t.tokensUsed ?? 0), 0) ?? 0,
     requiresHumanReview: scenario.evaluation.requiresHumanReview,
     reviewNotes: scenario.evaluation.reviewNotes,
+    realRequestsUsed,
+    outcome: classifyOutcome({
+      passed,
+      error,
+      llmDiagnosis,
+      output,
+      securityCheck,
+      requiresHumanReview: scenario.evaluation.requiresHumanReview,
+      deterministicChecks,
+    }),
   }
 }
 
@@ -182,6 +197,13 @@ function getPath(obj: unknown, path: string): unknown {
   }, obj)
 }
 
+/** Duck-typed read of requestsMade — works with GeminiAdapter; returns 0 for mock adapters. */
+function getAdapterRequestsMade(adapter: LLMAdapter): number {
+  return 'requestsMade' in adapter
+    ? (adapter as unknown as { requestsMade: number }).requestsMade
+    : 0
+}
+
 function resolveLLMAdapter(mode: BenchmarkMode): LLMAdapter {
   if (mode === 'real') {
     return createLLMAdapter()
@@ -228,6 +250,8 @@ function makeQuotaExhaustedResult(scenario: BenchmarkScenario, mode: BenchmarkMo
     securityCheck: { passed: false, violations: ['Scenario not executed: free-tier quota exhausted'] },
     tokensUsed: 0,
     requiresHumanReview: false,
+    outcome: 'QUOTA_EXHAUSTED',
+    realRequestsUsed: 0,
   }
 }
 

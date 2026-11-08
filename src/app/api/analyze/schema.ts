@@ -17,6 +17,17 @@ export interface AnalyzeRequest {
   experienceLevel?: 'novice' | 'intermediate' | 'experienced' | 'unknown'
 }
 
+// ── Severity assessment ───────────────────────────────────────────────────
+// Computed server-side from userText after safetyBlocked=false.
+// null means severity is 'normal' — no banner should be shown.
+
+export interface SeverityAssessmentResult {
+  level: 'normal' | 'high' | 'critical'
+  title: string
+  message: string
+  action: string
+}
+
 // ── Response: success (200) ────────────────────────────────────────────────
 
 export interface NodeTraceSummary {
@@ -67,6 +78,8 @@ export interface ClientAnalyzeOutput {
   fallbackText: string | null
   // Simplified trace for DEV mode only; null in production
   nodeTrace: NodeTraceSummary[] | null
+  // Severity assessment — null means normal (no banner). Computed server-side, never from LLM.
+  severity: SeverityAssessmentResult | null
 }
 
 // ── Response: errors ──────────────────────────────────────────────────────

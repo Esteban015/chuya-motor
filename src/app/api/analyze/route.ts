@@ -7,6 +7,7 @@ import type { Vehicle } from '@/domain/vehicle/vehicle'
 import type { AnalyzeOutput } from '@/agents/graph/types'
 import { sanitizeTraces } from '@/agents/graph/trace-sanitizer'
 import { devTraceStore } from '@/agents/graph/dev-trace-store'
+import { assessSeverity } from '@/domain/safety/severity-assessor'
 import type {
   ClientAnalyzeOutput,
   ApiVehicleInput,
@@ -75,7 +76,7 @@ function mapVehicle(v: ApiVehicleInput): Vehicle {
 // Never expose full traces to the client (Ajuste C, security requirement).
 // In development: expose minimal nodeTrace summary (no userText, no prompts).
 
-function sanitizeOutput(output: AnalyzeOutput): ClientAnalyzeOutput {
+function sanitizeOutput(output: AnalyzeOutput, userText: string): ClientAnalyzeOutput {
   const isDev = process.env['NODE_ENV'] !== 'production'
   const safeTraces = sanitizeTraces(output.traces)
 
@@ -107,6 +108,8 @@ function sanitizeOutput(output: AnalyzeOutput): ClientAnalyzeOutput {
     // Server-side production guard: traces are never sent to client in production.
     // The check is here (server), not in the client component.
     nodeTrace: isDev ? safeTraces : null,
+    // Deterministic severity assessment — null means normal, no banner.
+    severity: output.safetyBlocked ? null : assessSeverity(userText, output.route),
   }
 }
 
@@ -203,7 +206,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // 6. Success
-  return NextResponse.json(sanitizeOutput(result), {
+  return NextResponse.json(sanitizeOutput(result, userText), {
     status: 200,
     headers: NO_STORE,
   })

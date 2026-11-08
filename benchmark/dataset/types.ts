@@ -64,4 +64,4 @@ export const BenchmarkScenarioSchema = z.object({
 })
 export type BenchmarkScenario = z.infer<typeof BenchmarkScenarioSchema>
 
-export const DATASET_VERSION = '1.0.0'
+export const DATASET_VERSION = '1.1.0'

@@ -86,7 +86,7 @@ async function main(): Promise<void> {
 
   const ai = new GoogleGenAI({ apiKey })
 
-  let allModels: Model[] = []
+  const allModels: Model[] = []
 
   try {
     console.log('Fetching model list from Gemini API...')
