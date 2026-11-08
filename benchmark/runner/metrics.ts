@@ -1,4 +1,5 @@
 import type { BenchmarkResult, BenchmarkCategorySummary } from './types'
+import type { EvaluationOutcome } from './outcome'
 
 export interface LatencyPercentiles {
   p50: number
@@ -76,4 +77,27 @@ export function aggregateByCategory(results: BenchmarkResult[]): BenchmarkCatego
   }
 
   return summaries.sort((a, b) => a.category.localeCompare(b.category))
+}
+
+const ALL_OUTCOMES: EvaluationOutcome[] = [
+  'PASSED',
+  'PASSED_PENDING_REVIEW',
+  'FAILED_STRUCTURAL',
+  'FAILED_SAFETY',
+  'PROVIDER_ERROR',
+  'SCHEMA_ERROR',
+  'QUOTA_EXHAUSTED',
+  'TIMEOUT',
+  'FALLBACK_ACTIVATED',
+]
+
+/** Counts results by EvaluationOutcome. Results without an outcome field are ignored. */
+export function countByOutcome(results: BenchmarkResult[]): Record<EvaluationOutcome, number> {
+  const counts = Object.fromEntries(ALL_OUTCOMES.map((o) => [o, 0])) as Record<EvaluationOutcome, number>
+  for (const r of results) {
+    if (r.outcome !== undefined) {
+      counts[r.outcome]++
+    }
+  }
+  return counts
 }

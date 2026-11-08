@@ -2,41 +2,258 @@
 
 **Claridad entre vos y tu taller.**
 
-Plataforma automotriz orientada a LATAM que acompaña al propietario desde la aparición de una falla hasta su resolución: orientación sobre síntomas, mantenimiento y reparaciones sencillas de bajo riesgo, comprensión de presupuestos, comparación de costos cuando existen fuentes verificables, registro de reparaciones y confianza entre conductores y talleres.
+Asistente automotriz orientado a LATAM que ayuda al propietario a entender fallas, interpretar presupuestos y prepararse para hablar con su mecánico. Las respuestas son **orientativas**: no reemplazan una inspección profesional.
 
-> Estado: diseño y validación de MVP para Hackatón Tren Solar (noviembre de 2026). No es una herramienta de diagnóstico definitivo ni sustituye una inspección profesional.
+> Estado: MVP demostrable para Hackatón Tren Solar (noviembre 2026). Repositorio privado.
 
-## Líneas del producto
+---
 
-- **Chuya Asistente:** hipótesis orientativas, preguntas guiadas y contexto del vehículo.
-- **Chuya Guías:** mantenimiento y tareas de bajo riesgo adaptadas a la experiencia del usuario.
-- **Chuya Informe:** lectura y contraste de presupuestos, datos faltantes y evidencia.
-- **Chuya Taller:** presupuestos claros y trazabilidad de trabajos por profesionales.
-- **Chuya Confianza:** reputación vinculada a reparaciones documentadas, sin certificaciones inventadas.
+## Quick Start
+
+### Requisitos previos
+
+- **Node.js** ≥ 22 (ver `engines` en `package.json`)
+- **npm** ≥ 10 (incluido con Node.js 22)
+- **Git**
+
+Verificá tu versión:
+
+```bash
+node --version   # debe ser v22.x.x o superior
+npm --version
+```
+
+### Instalación y ejecución
+
+```bash
+# 1. Clonar
+git clone <repo-url>
+cd chuya-motor
+
+# 2. Instalar dependencias (modo CI, reproducible)
+npm ci
+
+# 3. Iniciar el servidor de desarrollo
+npm run dev
+```
+
+La aplicación estará disponible en **http://localhost:3000**.
+
+No se necesita ninguna variable de entorno para correr en modo simulado (stub). El proveedor LLM por defecto es `stub` — las respuestas son determinísticas y no realizan llamadas externas.
+
+---
+
+## Variables de entorno
+
+Creá un archivo `.env.local` en la raíz del proyecto (nunca lo commitees; está en `.gitignore`).
+
+### Modo stub — sin credenciales (por defecto)
+
+No hace falta crear `.env.local`. El servidor arranca con respuestas simuladas:
+
+```bash
+# Equivalente al comportamiento por defecto — se puede omitir
+LLM_PROVIDER=stub
+```
+
+### Modo Gemini — Google AI Studio
+
+```bash
+# .env.local
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=<tu-api-key-de-google-ai-studio>
+
+# Opcionales
+GEMINI_MODEL=gemini-2.5-flash-lite-preview-06-17   # modelo por defecto
+GEMINI_FREE_TIER=false                              # desactiva el guardián de cuota
+```
+
+### Modo Anthropic
+
+```bash
+# .env.local
+LLM_PROVIDER=anthropic
+LLM_API_KEY=<tu-api-key-sk-ant-...>
+
+# Opcional
+LLM_MODEL=claude-sonnet-4-6
+```
+
+> Las variables `*_API_KEY` son secretos. Nunca las pongas en archivos commiteados, variables `NEXT_PUBLIC_*` ni en el cliente.
+
+---
+
+## Modo simulado vs LLM real
+
+| | Stub (por defecto) | LLM real |
+|---|---|---|
+| Llamadas externas | ❌ Ninguna | ✅ Gemini o Anthropic |
+| Costo | Gratis | Según proveedor |
+| Hipótesis | Respuestas de ejemplo hardcodeadas | Generadas por el modelo |
+| Reproducibilidad | Determinístico | Variable |
+| Para desarrollar | ✅ Recomendado | Solo si probás la integración |
+
+El Safety Gate y toda la lógica de dominio funcionan igual en ambos modos: el bloqueo de consultas peligrosas, el análisis de presupuestos y la evaluación de severidad son **determinísticos** e independientes del LLM.
+
+---
+
+## Rutas disponibles
+
+| Ruta | Descripción |
+|------|-------------|
+| `/` | Landing: propuesta de valor, acceso a la demo |
+| `/demo` | Hub de demostración con dos flujos |
+| `/demo/falla` | Wizard guiado en 3 pasos: vehículo → síntoma → resultado |
+| `/demo/presupuesto` | Analizador de presupuestos con panel de consejos |
+| `/falla` | Formulario directo (backward compat con rutas anteriores) |
+| `/presupuesto` | Formulario directo (backward compat) |
+
+Todas las rutas de `/demo/*` muestran un badge **MODO DEMO · RESPUESTAS SIMULADAS** cuando `LLM_PROVIDER=stub`.
+
+---
+
+## Comandos
+
+### Desarrollo
+
+```bash
+npm run dev          # servidor de desarrollo en localhost:3000
+npm run build        # build de producción
+npm run start        # iniciar el build de producción
+```
+
+### Verificación de código
+
+```bash
+npm run type-check   # TypeScript sin errores (tsc --noEmit)
+npm run lint         # ESLint (next lint)
+```
+
+### Tests unitarios e integración — Vitest
+
+```bash
+npm test                  # todos los tests (vitest run) — actualmente 635/635
+npm run test:watch        # modo watch interactivo
+npm run test:coverage     # con cobertura V8
+```
+
+Los tests de Vitest cubren: dominio (`src/domain/`), API route handlers (`src/app/api/`), adaptadores LLM, orquestación LangGraph y el módulo de benchmark.
+
+### Tests E2E — Playwright
+
+Hay dos suites:
+
+```bash
+# Suite producción — 22 tests (requiere build previo con npm run build)
+npm run test:e2e
+
+# Suite desarrollo — 3 tests que requieren servidor de desarrollo
+npm run test:e2e:dev
+
+# Interfaz visual interactiva
+npm run test:e2e:ui
+
+# Listar todos los tests sin ejecutarlos
+npm run test:e2e:list
+```
+
+> La suite de producción arranca automáticamente el servidor (`npm run start`) si no hay uno corriendo en el puerto 3000. Para CI, establecé la variable `CI=true` — así usa el servidor de producción y no reutiliza uno existente.
+
+---
+
+## Arquitectura
+
+```
+Usuario
+  │
+  ▼
+Next.js App Router (src/app/)
+  │  Página de falla / presupuesto (Client Component)
+  │
+  ▼
+POST /api/analyze (src/app/api/analyze/route.ts)
+  │  Validación de entrada (Zod)
+  │  Rate limit: 10 req/min por IP (en memoria, demo únicamente)
+  │
+  ▼
+LangGraph — analyze-graph (src/agents/graph/)
+  │
+  ├─► validator        verificación de formato
+  ├─► safetyGate       Safety Gate determinístico v1.3.0
+  │     4 etapas: normalización → frases exactas → co-ocurrencia de stems → intención
+  │     Ningún agente puede anular un bloqueo del Safety Gate
+  │
+  ├─► router           clasifica como symptom / budget / clarification (determinístico)
+  │
+  ├─► diagnosisAgent   genera hipótesis orientativas (usa LLM)
+  │     └─► LLM Adapter (stub / Gemini / Anthropic)
+  │
+  └─► budgetParser     analiza líneas de presupuesto (usa LLM)
+        └─► LLM Adapter
+  │
+  ▼
+ClientAnalyzeOutput
+  │  route · hypotheses · facts · questions / budgetResult
+  │  severity (evaluación determinística de gravedad)
+  │  safetyBlocked · nodeTrace (solo en desarrollo)
+  │
+  ▼
+ReportView / SafetyAlert (src/components/)
+  SeverityBanner — banner visual si severity != null
+```
+
+### Módulos principales
+
+| Directorio | Responsabilidad |
+|------------|-----------------|
+| `src/app/` | Páginas y API routes (Next.js App Router) |
+| `src/components/` | Componentes React reutilizables |
+| `src/domain/` | Entidades, tipos, Safety Gate, severidad (lógica pura) |
+| `src/agents/` | Grafo LangGraph, nodos, adaptadores LLM |
+| `benchmark/` | Plataforma de evaluación de calidad LLM (sin llamadas reales por defecto) |
+| `e2e/` | Tests Playwright (prod: `playwright.config.ts`, dev: `playwright.dev.config.ts`) |
+
+---
 
 ## Documentación
 
-- [Visión de producto](docs/PRODUCT.md)
-- [Requisitos y alcance](docs/REQUIREMENTS.md)
-- [Arquitectura general](docs/ARCHITECTURE.md)
-- [Arquitectura multiagente](docs/AGENT_ORCHESTRATION.md)
-- [Agentes de desarrollo](docs/DEV_AGENTS.md)
-- [Seguridad y límites](docs/SAFETY.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Evidencia de validación](docs/VALIDATION.md)
-- [Primer incremento](docs/MVP_01.md)
+| Documento | Contenido |
+|-----------|-----------|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Estructura de directorios, decisiones técnicas |
+| [docs/AGENT_ORCHESTRATION.md](docs/AGENT_ORCHESTRATION.md) | Grafo LangGraph, nodos y contratos de estado |
+| [docs/SAFETY.md](docs/SAFETY.md) | Safety Gate: política, etapas y casos bloqueados |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | Visión de producto y líneas |
+| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Requisitos y alcance del MVP |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Fases de desarrollo planificadas |
+| [docs/MVP_01.md](docs/MVP_01.md) | Especificación del primer incremento |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Decisiones de arquitectura y diseño |
+| [docs/VALIDATION.md](docs/VALIDATION.md) | Evidencia de validación exploratoria |
+| [docs/DEV_AGENTS.md](docs/DEV_AGENTS.md) | Configuración de agentes Claude Code |
 
-## Principios
+---
 
-1. Evidencias diferenciadas de hipótesis, sin certeza inventada.
-2. Seguridad física primero; no se promueven maniobras peligrosas.
-3. Mecánicos y propietarios como colaboradores, no adversarios.
-4. Fuentes y precios fechados, con localidad y condiciones.
-5. Diseño mobile-first, accesible y trazable.
-6. IA solo donde aporta valor; cálculos y controles críticos determinísticos.
+## Limitaciones actuales
 
-## Desarrollo
+- **Sin persistencia:** no hay base de datos. Los casos no se guardan entre sesiones.
+- **Sin autenticación:** no hay usuarios ni perfiles.
+- **Rate limit en memoria:** 10 req/min por IP. Si el proceso se reinicia, el contador se resetea.
+- **Un solo vehículo por consulta:** no hay historial ni comparación entre casos.
+- **Hipótesis orientativas únicamente:** no se emiten recomendaciones de reparación DIY.
+- **Solo texto:** no se procesan imágenes, audio ni datos OBD-II.
+- **Plataforma de benchmark sin producción:** `benchmark/` evalúa calidad del LLM pero no ejecuta llamadas reales por defecto.
 
-Arquitectura propuesta: Next.js + TypeScript, Supabase/PostgreSQL, LangGraph JS para los flujos del producto, Claude Code con subagentes para desarrollo; Vitest y Playwright para pruebas. El stack es una **decisión propuesta**, todavía no implementada.
+## Funcionalidades futuras (no implementadas)
 
-Licencia: pendiente de decisión. Repositorio privado.
+Están documentadas en [docs/ROADMAP.md](docs/ROADMAP.md) pero aún no existen en el código:
+
+- Persistencia con PostgreSQL/Supabase
+- Perfil de vehículos e historial de reparaciones
+- Comparación de presupuestos con fuentes verificables
+- Sistema de reputación de talleres
+- Soporte para imágenes y datos OBD-II
+
+---
+
+## Licencia
+
+Pendiente de decisión. Repositorio privado.

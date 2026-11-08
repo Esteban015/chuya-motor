@@ -39,6 +39,11 @@ export class GeminiAdapter implements LLMAdapter {
     )
   }
 
+  /** Number of real generateContent calls made since this adapter was created. */
+  get requestsMade(): number {
+    return this.requestCount
+  }
+
   async complete(req: LLMCompletionRequest): Promise<LLMResult> {
     // Free-tier guard: enforce local request cap before making any network call.
     if (this.freeTierLimits !== undefined) {

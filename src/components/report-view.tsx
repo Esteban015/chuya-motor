@@ -3,6 +3,7 @@
 import type { ClientAnalyzeOutput, ClientBudgetOutput } from '@/app/api/analyze/schema'
 import { DemoBadge } from '@/components/demo-badge'
 import { FallbackAlert } from '@/components/fallback-alert'
+import { SeverityBanner } from '@/components/severity-banner'
 import { TraceViewer } from '@/components/trace-viewer'
 
 interface ReportViewProps {
@@ -10,26 +11,26 @@ interface ReportViewProps {
 }
 
 function confidenceBadge(confidence: 'low' | 'medium' | 'high') {
-  const map = {
-    low: 'inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 ring-1 ring-gray-300',
+  const styles = {
+    low: 'inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-brand-text-muted ring-1 ring-brand-border',
     medium:
-      'inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-300',
-    high: 'inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 ring-1 ring-green-300',
+      'inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 ring-1 ring-amber-200',
+    high: 'inline-flex items-center rounded-full bg-brand-primary-tint px-2 py-0.5 text-xs font-medium text-brand-primary ring-1 ring-brand-primary/20',
   } as const
   const labels = { low: 'Baja', medium: 'Media', high: 'Alta' } as const
-  return { className: map[confidence], label: labels[confidence] }
+  return { className: styles[confidence], label: labels[confidence] }
 }
 
 function statusPill(status: ClientBudgetOutput['completenessStatus']) {
-  const map = {
+  const styles = {
     COMPLETE:
-      'inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 ring-1 ring-green-300',
+      'inline-flex items-center rounded-full bg-brand-primary-tint px-2 py-0.5 text-xs font-semibold text-brand-primary ring-1 ring-brand-primary/20',
     PARTIAL:
-      'inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-300',
+      'inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-200',
     INVALID:
-      'inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 ring-1 ring-red-300',
+      'inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 ring-1 ring-red-200',
   } as const
-  return map[status]
+  return styles[status]
 }
 
 function formatAmountFromMinorUnit(minorUnit: number, currency: string | null): string {
@@ -37,58 +38,76 @@ function formatAmountFromMinorUnit(minorUnit: number, currency: string | null): 
   return amount.toLocaleString('es-AR', { minimumFractionDigits: 2 }) + (currency ? ` ${currency}` : '')
 }
 
+function SectionHeading({ id, children }: { id: string; children: React.ReactNode }) {
+  return (
+    <h2
+      id={id}
+      className="text-xs font-semibold text-brand-text-muted uppercase tracking-widest mb-3"
+    >
+      {children}
+    </h2>
+  )
+}
 
 export function ReportView({ report }: ReportViewProps) {
   return (
-    <div className="space-y-6">
-      {/* Always-visible demo badge */}
-      <div>
+    <div className="space-y-5">
+      {/* Demo badge */}
+      <div className="flex justify-start">
         <DemoBadge />
       </div>
 
-      {/* Fallback alert (shown if present, but content below still renders) */}
+      {/* Fallback alert */}
       {report.fallback && (
         <FallbackAlert fallbackText={report.fallbackText} />
       )}
 
-      {/* Facts section */}
+      {/* Severity banner — before hypotheses */}
+      {report.severity && (
+        <SeverityBanner severity={report.severity} />
+      )}
+
+      {/* Facts */}
       {report.facts.length > 0 && (
         <section aria-labelledby="facts-heading">
-          <h2 id="facts-heading" className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Lo que declaraste
-          </h2>
-          <ul className="space-y-1 list-disc list-inside text-sm text-gray-700">
+          <SectionHeading id="facts-heading">Lo que declaraste</SectionHeading>
+          <ul className="space-y-1.5">
             {report.facts.map((fact, i) => (
-              <li key={i}>{fact}</li>
+              <li
+                key={i}
+                className="flex items-start gap-2 text-sm text-brand-text leading-relaxed"
+              >
+                <span
+                  aria-hidden="true"
+                  className="mt-1.5 flex-shrink-0 w-1.5 h-1.5 rounded-full bg-brand-accent-dark"
+                />
+                {fact}
+              </li>
             ))}
           </ul>
         </section>
       )}
 
-      {/* Hypotheses section */}
+      {/* Hypotheses */}
       {report.hypotheses.length > 0 && (
-        <section aria-labelledby="hypotheses-heading">
-          <h2 id="hypotheses-heading" className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            Hipótesis orientativas
-          </h2>
+        <section aria-labelledby="hypotheses-heading" data-testid="hypotheses">
+          <SectionHeading id="hypotheses-heading">Hipótesis orientativas</SectionHeading>
           <div className="space-y-3">
             {report.hypotheses.map((h, i) => {
               const badge = confidenceBadge(h.confidence)
               return (
                 <div
                   key={i}
-                  className="rounded-lg border border-gray-200 bg-white p-4 space-y-2"
+                  className="rounded-xl border border-brand-border-light bg-white p-4 shadow-brand-xs space-y-2"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="font-semibold text-gray-800 text-sm">{h.statement}</p>
-                    <span className={badge.className}>
-                      Confianza: {badge.label}
-                    </span>
+                    <p className="font-medium text-brand-text text-sm leading-relaxed">{h.statement}</p>
+                    <span className={badge.className}>Confianza: {badge.label}</span>
                   </div>
                   {h.caveats.length > 0 && (
-                    <ul className="space-y-0.5">
+                    <ul className="space-y-0.5 pl-0">
                       {h.caveats.map((caveat, ci) => (
-                        <li key={ci} className="text-xs text-gray-500 italic">
+                        <li key={ci} className="text-xs text-brand-text-muted italic leading-relaxed">
                           {caveat}
                         </li>
                       ))}
@@ -101,16 +120,14 @@ export function ReportView({ report }: ReportViewProps) {
         </section>
       )}
 
-      {/* Missing information section */}
+      {/* Missing information */}
       {report.missingInformation.length > 0 && (
         <section aria-labelledby="missing-heading">
-          <h2 id="missing-heading" className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Información faltante
-          </h2>
-          <ul className="space-y-1">
+          <SectionHeading id="missing-heading">Información faltante</SectionHeading>
+          <ul className="space-y-1.5">
             {report.missingInformation.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                <span aria-hidden="true" className="text-amber-500 flex-shrink-0">⚠</span>
+              <li key={i} className="flex items-start gap-2 text-sm text-brand-text-muted leading-relaxed">
+                <span aria-hidden="true" className="text-amber-500 flex-shrink-0 mt-0.5">⚠</span>
                 <span>{item}</span>
               </li>
             ))}
@@ -118,36 +135,34 @@ export function ReportView({ report }: ReportViewProps) {
         </section>
       )}
 
-      {/* Budget section */}
+      {/* Budget */}
       {report.budget && report.route === 'budget' && (
         <section aria-labelledby="budget-heading">
-          <h2 id="budget-heading" className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            Análisis del presupuesto
-          </h2>
-          <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
+          <SectionHeading id="budget-heading">Análisis del presupuesto</SectionHeading>
+          <div className="rounded-xl border border-brand-border-light bg-white p-4 shadow-brand-xs space-y-3">
             <div className="flex items-center gap-2">
-              <span>Estado:</span>
+              <span className="text-sm text-brand-text-muted">Estado:</span>
               <span className={statusPill(report.budget.completenessStatus)}>
                 {report.budget.completenessStatus}
               </span>
             </div>
 
             {report.budget.computedTotalMinorUnit !== null && (
-              <p className="text-sm text-gray-700">
+              <p className="text-sm text-brand-text">
                 <span className="font-medium">Total calculado:</span>{' '}
                 {formatAmountFromMinorUnit(report.budget.computedTotalMinorUnit, report.budget.currency)}
               </p>
             )}
 
             {report.budget.discrepancy === true && (
-              <p className="flex items-center gap-1 text-sm font-medium text-red-600">
+              <p className="flex items-center gap-1.5 text-sm font-medium text-red-600">
                 <span aria-hidden="true">⚠</span>
                 El total declarado no coincide con la suma calculada
               </p>
             )}
 
             {report.budget.discrepancy === false && (
-              <p className="flex items-center gap-1 text-sm font-medium text-green-600">
+              <p className="flex items-center gap-1.5 text-sm font-medium text-brand-primary">
                 <span aria-hidden="true">✓</span>
                 El total declarado coincide
               </p>
@@ -159,29 +174,27 @@ export function ReportView({ report }: ReportViewProps) {
               </p>
             )}
 
-            <div className="flex gap-4 text-xs text-gray-500">
-              <span>Partidas: {report.budget.lineCount}</span>
+            <div className="flex gap-4 text-xs text-brand-text-light border-t border-brand-border-light pt-2 mt-1">
+              <span>Partidas: <strong className="text-brand-text-muted">{report.budget.lineCount}</strong></span>
               {report.budget.missingLineCount > 0 && (
-                <span>Sin importe: {report.budget.missingLineCount}</span>
+                <span>Sin importe: <strong className="text-brand-text-muted">{report.budget.missingLineCount}</strong></span>
               )}
             </div>
           </div>
         </section>
       )}
 
-      {/* Warnings section */}
+      {/* Warnings */}
       {report.warnings.length > 0 && (
         <section aria-labelledby="warnings-heading">
-          <h2 id="warnings-heading" className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Advertencias
-          </h2>
+          <SectionHeading id="warnings-heading">Advertencias</SectionHeading>
           <ul className="space-y-2">
             {report.warnings.map((w, i) => (
               <li
                 key={i}
-                className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 leading-relaxed"
               >
-                <span aria-hidden="true" className="flex-shrink-0">⚠</span>
+                <span aria-hidden="true" className="flex-shrink-0 mt-0.5">⚠</span>
                 <span>{w}</span>
               </li>
             ))}
@@ -189,28 +202,35 @@ export function ReportView({ report }: ReportViewProps) {
         </section>
       )}
 
-      {/* Questions section */}
+      {/* Questions */}
       {report.questions.length > 0 && (
         <section aria-labelledby="questions-heading">
-          <h2 id="questions-heading" className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
-            Preguntas para el taller
-          </h2>
-          <ol className="space-y-2 list-decimal list-inside">
+          <SectionHeading id="questions-heading">Preguntas para el taller</SectionHeading>
+          <ol className="space-y-2">
             {report.questions.map((q, i) => (
-              <li key={i} className="text-sm text-gray-700">
-                {q}
+              <li
+                key={i}
+                className="flex items-start gap-3 text-sm text-brand-text leading-relaxed"
+              >
+                <span
+                  aria-hidden="true"
+                  className="flex-shrink-0 font-semibold text-brand-primary font-display text-xs mt-0.5 w-5 text-right"
+                >
+                  {i + 1}.
+                </span>
+                <span>{q}</span>
               </li>
             ))}
           </ol>
         </section>
       )}
 
-      {/* Coverage disclaimer — always at bottom */}
-      <p className="text-xs italic text-gray-400 border-t border-gray-100 pt-4">
+      {/* Disclaimer */}
+      <p className="text-xs italic text-brand-text-light border-t border-brand-border-light pt-4 leading-relaxed">
         {report.coverageDisclaimer}
       </p>
 
-      {/* DEV trace section — only rendered when server sends trace data (dev mode) */}
+      {/* DEV trace viewer */}
       {report.nodeTrace !== null && (
         <TraceViewer traces={report.nodeTrace} />
       )}
