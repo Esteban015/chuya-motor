@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { analyzeCase } from '@/agents/graph/analyze-graph'
-import { createLLMAdapter } from '@/agents/llm/llm-adapter-factory'
+import { createRequestProtection } from '@/server/llm-protection/runtime'
+import type { ProcessingSnapshot } from '@/server/llm-protection/processing-tracker'
+import { deriveAiStatus } from './ai-status'
 import { StubDocumentSource } from '@/sources/stub'
 import type { Vehicle } from '@/domain/vehicle/vehicle'
 import type { AnalyzeOutput } from '@/agents/graph/types'
 import { sanitizeTraces } from '@/agents/graph/trace-sanitizer'
 import { devTraceStore } from '@/agents/graph/dev-trace-store'
-import { assessSeverity } from '@/domain/safety/severity-assessor'
+import { resolveUserFacingSeverity } from '@/domain/safety/severity-assessor'
 import type {
   ClientAnalyzeOutput,
   ApiVehicleInput,
@@ -38,26 +40,10 @@ const AnalyzeRequestSchema = z.object({
     .optional(),
 })
 
-// ── Rate limiting ──────────────────────────────────────────────────────────
-// In-memory — single-instance demo only.
-// Production: replace with Redis sliding-window (e.g., Upstash Rate Limit).
-
-const RATE_LIMIT = 10
-const RATE_WINDOW_MS = 60_000
-
-const rateLimitMap = new Map<string, { count: number; windowStart: number }>()
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now()
-  const record = rateLimitMap.get(ip)
-  if (!record || now - record.windowStart > RATE_WINDOW_MS) {
-    rateLimitMap.set(ip, { count: 1, windowStart: now })
-    return true
-  }
-  if (record.count >= RATE_LIMIT) return false
-  record.count++
-  return true
-}
+// ── Rate limiting and LLM protection (Incremento 6.4D) ─────────────────────
+// src/server/llm-protection: per-client request rate (shared store when configured, per-instance
+// fallback otherwise), and every REAL provider call guarded by distributed budgets, concurrency,
+// cooldown and kill switch. Fails closed for real providers; the stub is never blocked by them.
 
 // ── Vehicle mapping ────────────────────────────────────────────────────────
 // No licensePlate or odometer exposed from the API (privacy).
@@ -76,7 +62,7 @@ function mapVehicle(v: ApiVehicleInput): Vehicle {
 // Never expose full traces to the client (Ajuste C, security requirement).
 // In development: expose minimal nodeTrace summary (no userText, no prompts).
 
-function sanitizeOutput(output: AnalyzeOutput, userText: string): ClientAnalyzeOutput {
+function sanitizeOutput(output: AnalyzeOutput, userText: string, processing: ProcessingSnapshot): ClientAnalyzeOutput {
   const isDev = process.env['NODE_ENV'] !== 'production'
   const safeTraces = sanitizeTraces(output.traces)
 
@@ -109,7 +95,10 @@ function sanitizeOutput(output: AnalyzeOutput, userText: string): ClientAnalyzeO
     // The check is here (server), not in the client component.
     nodeTrace: isDev ? safeTraces : null,
     // Deterministic severity assessment — null means normal, no banner.
-    severity: output.safetyBlocked ? null : assessSeverity(userText, output.route),
+    // Precedence (6.4B, D-02): see resolveUserFacingSeverity — never from the LLM.
+    severity: resolveUserFacingSeverity({ userText, safetyBlocked: output.safetyBlocked, route: output.route }),
+    // 6.4E: what actually processed this request — the UI badge is rendered from this only.
+    aiStatus: deriveAiStatus(processing, output),
   }
 }
 
@@ -121,17 +110,14 @@ const NO_STORE = { 'Cache-Control': 'no-store' }
 // ── Route handler ──────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  // 1. Rate limit
-  const ip =
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ??
-    req.headers.get('x-real-ip') ??
-    'unknown'
-
-  if (!checkRateLimit(ip)) {
+  // 1. Rate limit (per hashed client id; see client-identity.ts for trusted headers)
+  const protection = createRequestProtection(req.headers)
+  const rate = await protection.checkRequestRate()
+  if (!rate.allowed) {
     return NextResponse.json(
       {
         error: 'RATE_LIMIT',
-        message: 'Demasiadas solicitudes. Intentá de nuevo en un minuto.',
+        message: 'Demasiadas solicitudes seguidas. Esperá un momento y volvé a intentar.',
       },
       { status: 429, headers: NO_STORE },
     )
@@ -175,7 +161,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         dataLabel: 'user_input',
       },
       {
-        llmAdapter: createLLMAdapter(),
+        // Stub, guarded real adapter, or explicit unavailable adapter — never a silent stub fallback.
+        llmAdapter: protection.createAdapter(),
         documentSourcePort: new StubDocumentSource(),
       },
     )
@@ -200,13 +187,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         safetyDerivationMessage: result.safetyDerivationMessage,
         policyVersion: result.policyVersion,
         coverageDisclaimer: result.coverageDisclaimer,
+        // 6.4B (D-02): additive field. Critical "No conduzcas" warning only when the blocked
+        // text describes loss of braking capacity; null otherwise. The LLM was never called.
+        severity: resolveUserFacingSeverity({ userText, safetyBlocked: true, route: null }),
       },
       { status: 422, headers: NO_STORE },
     )
   }
 
   // 6. Success
-  return NextResponse.json(sanitizeOutput(result, userText), {
+  return NextResponse.json(sanitizeOutput(result, userText, protection.processing()), {
     status: 200,
     headers: NO_STORE,
   })

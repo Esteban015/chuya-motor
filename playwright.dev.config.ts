@@ -27,6 +27,9 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     env: {
       LLM_PROVIDER: 'stub',
+      // 6.4E: never touch the real Upstash database from .env.local during E2E; counters stay
+      // in memory for this local server only (the stub is never guarded by LLM budgets).
+      LLM_QUOTA_STORE: 'memory',
       PORT: '3001',
     },
   },

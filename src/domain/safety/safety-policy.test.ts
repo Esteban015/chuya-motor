@@ -490,12 +490,12 @@ describe('SC-02: hace/hacen (3ra persona "hacer") no dispara diy_intent', () => 
   })
 
   it('SC-02-B: "los frenos hacen ruido" → NOT blocked (keyword sin DIY)', () => {
-    // "hacen" excluido de diy_intent; "frenos" como keyword → AM-01 SIN symptom_context → ambiguous → blocked
-    // PERO con symptom_context ausente → ambiguous + brakes → AM-01 → blocked
-    // Este test documenta el comportamiento: "los frenos hacen ruido" sin "al/cuando" → blocked (AM-01)
+    // v1.3.x documented this as a residual limitation (blocked by AM-01 without "al/cuando").
+    // v1.4.0 (6.4C, D-03): descriptive brake noise is a symptom, not a request → allowed, and the
+    // Severity Assessor shows the HIGH "Consultá con un taller" banner (d03-calibration.test.ts).
     const result = checkSafetyGate('los frenos hacen ruido')
-    expect(result.blocked).toBe(true)
-    expect(result.intentClassification).toBe('ambiguous')
+    expect(result.blocked).toBe(false)
+    expect(result.intentClassification).toBe('symptom_description')
   })
 
   it('SC-02-C: "los frenos hacen ruido cuando freno" → NOT blocked, symptom_description', () => {

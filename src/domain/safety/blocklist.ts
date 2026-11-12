@@ -1,7 +1,12 @@
 // D-1: Versioned safety signal catalog.
 // Each group: category, keywords (single tokens), phrases (multi-token).
 // Policy version bumped when groups are added/changed.
-export const SAFETY_POLICY_VERSION = '1.3.0'
+// 1.3.1 (Incremento 6.4B, D-03): "fueron" past marker (safety-policy.ts). Signal groups unchanged.
+// 1.4.0 (Incremento 6.4C, D-03): AM-01 calibration — descriptive 12 V battery and brake-noise
+//       symptoms are not blocked (safety-policy.ts isDescriptiveSymptomExemption). Groups unchanged.
+// 1.5.0 (Incremento 6.4D, P0): explicit-hazard precedence (hazard-signals.ts) evaluated right after
+//       exact phrases and before every permissive classification; negated hazard spans are masked.
+export const SAFETY_POLICY_VERSION = '1.5.0'
 
 export interface SignalGroup {
   category: string

@@ -283,8 +283,8 @@ describe('CAM-05: realRequestsUsed per scenario', () => {
       mode: 'mock',
       // SYM-001: 1 LLM call (symptom route, diy_intent → not safety-blocked)
       // SAF-001: 0 LLM calls (safety-blocked by policy)
-      // SYM-003 intentionally excluded: "batería" triggers high_voltage keyword + ambiguous
-      //   intent → AM-01 blocks it, making realRequestsUsed=0 despite expected.route='symptom'
+      // SYM-003 excluded (historical: blocked until Safety Gate v1.4.0; kept out so this
+      //   aggregation test stays a 1-call baseline)
       scenarioIds: ['SYM-001', 'SAF-001'],
       llmAdapter: adapter,
     })
@@ -678,33 +678,35 @@ describe('CAM-14: Mock mode — no real LLM calls', () => {
   }, 15_000)
 })
 
-// ── DEF-01: SYM-003 — Dataset correction (AM-01 block is correct) ─────────────
+// ── DEF-01 (superseded by 6.4C, D-03): SYM-003 — 12 V battery symptom now allowed ──
 
-describe('DEF-01: SYM-003 — AM-01 block is correct behavior (dataset corrected v1.1.0)', () => {
-  it('DEF-01-A: SYM-003 mock → safetyBlocked=true (batería = high_voltage keyword + ambiguous intent)', async () => {
+describe('DEF-01 → D-03: SYM-003 descriptive 12 V battery symptom is allowed (Safety Gate v1.4.0, dataset v1.2.0)', () => {
+  it('DEF-01-A: SYM-003 mock → safetyBlocked=false (descriptive 12 V battery, no high-voltage context)', async () => {
     const campaign = await runCampaign(getAllScenarios(), {
       mode: 'mock',
       scenarioIds: ['SYM-003'],
     })
     const result = campaign.completed[0]!
-    expect(result.output?.safetyBlocked).toBe(true)
+    expect(result.output?.safetyBlocked).toBe(false)
+    expect(result.output?.route).toBe('symptom')
   }, 15_000)
 
-  it('DEF-01-B: SYM-003 mock → passed=true, outcome=PASSED (expected block matches actual block)', async () => {
+  it('DEF-01-B: SYM-003 mock → passed=true, outcome=PASSED_PENDING_REVIEW (expected allow matches actual allow)', async () => {
     const campaign = await runCampaign(getAllScenarios(), {
       mode: 'mock',
       scenarioIds: ['SYM-003'],
     })
     const result = campaign.completed[0]!
     expect(result.passed).toBe(true)
-    expect(result.outcome).toBe('PASSED')
+    // Now produces LLM output → human review required (evaluation.requiresHumanReview=true).
+    expect(result.outcome).toBe('PASSED_PENDING_REVIEW')
   }, 15_000)
 
-  it('DEF-01-C: SYM-003 scenario version is 1.1.0 (dataset bump)', () => {
+  it('DEF-01-C: SYM-003 scenario version is 1.2.0 (dataset bump, 6.4C)', () => {
     const s = getScenario('SYM-003')
-    expect(s.version).toBe('1.1.0')
-    expect(s.expected.safetyBlocked).toBe(true)
-    expect(s.security.expectsSafetyBlock).toBe(true)
+    expect(s.version).toBe('1.2.0')
+    expect(s.expected.safetyBlocked).toBe(false)
+    expect(s.security.expectsSafetyBlock).toBe(false)
   })
 })
 

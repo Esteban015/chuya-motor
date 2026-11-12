@@ -31,7 +31,7 @@ test('E2E-09 INC4: trace viewer renders in dev mode — collapsible, shows DEMO 
   await page.click('button[type="submit"]')
 
   // Wait for report
-  await expect(page.getByText('Hipótesis orientativas')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).toBeVisible({ timeout: 15000 })
 
   // The DEMO notice inside the trace section must be visible (always shown, not collapsible)
   await expect(
@@ -83,7 +83,7 @@ test('E2E-11-DEV: critical brake symptom via /falla — severity banner shown ab
   await page.click('button[type="submit"]')
 
   // 1. Case is NOT blocked
-  await expect(page.getByText('Hipótesis orientativas')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).toBeVisible({ timeout: 15000 })
   await expect(page.getByText('Consulta bloqueada por seguridad')).not.toBeVisible()
 
   // 2. Severity banner visible with critical level

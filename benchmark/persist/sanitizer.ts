@@ -14,6 +14,19 @@ const KNOWN_REASON_CODES: readonly string[] = [
   'SAFETY_BLOCKED',
   'MISSING_CASE_ID',
   'INVALID_CASE_ID',
+  // Incremento 6.3 — appended (order-preserving) so API errors survive persistence.
+  'LLM_QUOTA_EXCEEDED',
+  'LLM_PROVIDER_UNAVAILABLE',
+  'LLM_MODEL_UNAVAILABLE',
+  'LLM_EMPTY_RESPONSE',
+  // Incremento 6.4D — protection-layer codes (appended, order-preserving).
+  'LLM_DISABLED',
+  'LLM_PROVIDER_COOLDOWN',
+  'LLM_CALL_LIMIT',
+  'LLM_BUDGET_EXHAUSTED',
+  'LLM_BUSY',
+  'LLM_GUARD_UNAVAILABLE',
+  'LLM_CLIENT_LIMIT',
 ]
 
 function extractReasonCode(error: string | null, llmDiagnosis: string | null): string | null {
@@ -52,5 +65,6 @@ export function deriveProvider(modelId: string, mode: 'mock' | 'simulated' | 're
   if (mode !== 'real') return 'mock'
   if (modelId.startsWith('gemini')) return 'google'
   if (modelId.startsWith('claude')) return 'anthropic'
+  if (modelId.startsWith('openai/gpt-oss')) return 'groq'
   return process.env['LLM_PROVIDER'] ?? 'unknown'
 }

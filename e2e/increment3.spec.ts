@@ -60,7 +60,7 @@ test('E2E-02: falla flow — fill form, submit, see report with DEMO badge', asy
   await page.click('button[type="submit"]')
 
   // Wait for the report to appear — Hipótesis orientativas section
-  await expect(page.getByText('Hipótesis orientativas')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).toBeVisible({ timeout: 15000 })
 
   // DEMO badge must be visible in the report
   await expect(page.getByText('MODO DEMO · RESPUESTAS SIMULADAS').first()).toBeVisible()
@@ -116,6 +116,75 @@ test('E2E-04: safety block — submitting dangerous text shows SafetyAlert', asy
   await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).not.toBeVisible()
 })
 
+// ── E2E-04-B (6.4B, D-02): blocked brake-capacity loss → explicit "No conduzcas" ──
+
+test('E2E-04-B: blocked brake loss shows critical "No conduzcas" inside the safety alert', async ({ page }) => {
+  // Own rate-limit bucket (10 req/min per IP) so the added tests don't starve later ones.
+  await page.setExtraHTTPHeaders({ 'x-forwarded-for': '10.99.4.2' })
+  await page.goto('/falla')
+  await page.selectOption('#vehicleType', 'sedan')
+  await page.fill('#symptomText', 'El pedal de freno se hunde cada vez más y el auto casi no frena.')
+  await page.selectOption('#occurrence', 'Siempre')
+  await page.click('button[type="submit"]')
+
+  const alert = page.getByRole('alert').filter({ hasText: 'Consulta bloqueada por seguridad' })
+  await expect(alert).toBeVisible({ timeout: 15000 })
+  await expect(alert.locator('[data-severity="critical"]')).toBeVisible()
+  await expect(alert.getByText(/No conduzcas el vehículo/)).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).not.toBeVisible()
+})
+
+test('E2E-04-C: blocked DIY brake request keeps the generic alert (no critical block)', async ({ page }) => {
+  // Own rate-limit bucket (10 req/min per IP) so the added tests don't starve later ones.
+  await page.setExtraHTTPHeaders({ 'x-forwarded-for': '10.99.4.3' })
+  await page.goto('/falla')
+  await page.selectOption('#vehicleType', 'sedan')
+  await page.fill('#symptomText', 'Quiero cambiar las pastillas de freno yo mismo.')
+  await page.selectOption('#occurrence', 'Siempre')
+  await page.click('button[type="submit"]')
+
+  const alert = page.getByRole('alert').filter({ hasText: 'Consulta bloqueada por seguridad' })
+  await expect(alert).toBeVisible({ timeout: 15000 })
+  await expect(alert.locator('[data-severity]')).toHaveCount(0)
+  await expect(page.getByText(/No conduzcas/)).toHaveCount(0)
+})
+
+// ── E2E-04-D (6.4C, D-03): descriptive brake noise → report + prudent HIGH banner ──
+
+test('E2E-04-D: "Los frenos hacen ruido" is not blocked and shows the HIGH workshop banner', async ({ page }) => {
+  // Own rate-limit bucket (10 req/min per IP) so the added tests don't starve later ones.
+  await page.setExtraHTTPHeaders({ 'x-forwarded-for': '10.99.4.4' })
+  await page.goto('/falla')
+  await page.selectOption('#vehicleType', 'sedan')
+  await page.fill('#symptomText', 'Los frenos hacen ruido desde hace una semana.')
+  await page.selectOption('#occurrence', 'Siempre')
+  await page.click('button[type="submit"]')
+
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByText('Síntoma de alta atención')).toBeVisible()
+  await expect(page.getByText(/Consultá con un taller a la brevedad/)).toBeVisible()
+  await expect(page.getByText('Consulta bloqueada por seguridad')).not.toBeVisible()
+  await expect(page.getByText(/No conduzcas/)).toHaveCount(0)
+})
+
+// ── E2E-04-E (6.4D, P0): explicit hazard beats the permissive "cuando + verbo" context ──
+
+test('E2E-04-E: "Cuando arranco, la batería tira chispas" is blocked with a preventive critical warning', async ({ page }) => {
+  // Own rate-limit bucket (10 req/min per IP) so the added tests don't starve later ones.
+  await page.setExtraHTTPHeaders({ 'x-forwarded-for': '10.99.4.5' })
+  await page.goto('/falla')
+  await page.selectOption('#vehicleType', 'sedan')
+  await page.fill('#symptomText', 'Cuando arranco, la batería tira chispas.')
+  await page.selectOption('#occurrence', 'Al arrancar')
+  await page.click('button[type="submit"]')
+
+  const alert = page.getByRole('alert').filter({ hasText: 'Consulta bloqueada por seguridad' })
+  await expect(alert).toBeVisible({ timeout: 15000 })
+  await expect(alert.locator('[data-severity="critical"]')).toBeVisible()
+  await expect(alert.getByText(/No toques la batería ni el cableado/)).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).not.toBeVisible()
+})
+
 // ── E2E-05: Budget — manual input, correct total → no discrepancy message ────
 
 test('E2E-05: budget manual input, correct total → no discrepancy message', async ({
@@ -162,7 +231,7 @@ test('E2E-07 DEF-02: "¿Cómo funcionan los frenos?" → reporte symptom, sin sa
   await page.selectOption('#occurrence', 'Siempre')
   await page.click('button[type="submit"]')
 
-  await expect(page.getByText('Hipótesis orientativas')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).toBeVisible({ timeout: 15000 })
   await expect(page.getByText('Consulta bloqueada por seguridad')).not.toBeVisible()
 })
 
@@ -192,3 +261,23 @@ test('E2E-10 INC4: GET /api/traces returns 404 in production — trace route iso
   expect(response.status()).toBe(404)
 })
 
+
+// ── E2E-11 (6.4E): public mode + per-response badge match the real provider (stub in CI) ──
+
+test('E2E-11: /api/status exposes only the mode; stub responses are labeled as simulated, never as AI pilot', async ({ page }) => {
+  const status = await page.request.get('/api/status')
+  expect(status.status()).toBe(200)
+  expect(await status.json()).toEqual({ mode: 'demo' })
+
+  await page.setExtraHTTPHeaders({ 'x-forwarded-for': '10.99.4.11' })
+  await page.goto('/falla')
+  await page.selectOption('#vehicleType', 'sedan')
+  await page.fill('#symptomText', 'El motor hace un ruido extraño al arrancar en frío.')
+  await page.selectOption('#occurrence', 'Al arrancar')
+  await page.click('button[type="submit"]')
+
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('[data-ai-badge="ai"]')).toHaveCount(0)
+  await expect(page.getByText('PILOTO CON IA · RESPUESTAS ORIENTATIVAS')).toHaveCount(0)
+  await expect(page.getByText('MODO DEMO · RESPUESTAS SIMULADAS').first()).toBeVisible()
+})

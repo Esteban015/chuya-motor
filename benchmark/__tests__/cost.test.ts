@@ -110,3 +110,16 @@ describe('COST-07: Gemini free-tier pricing', () => {
     expect(result.unknownModel).toBe(true)
   })
 })
+
+describe('COST-07: Groq gpt-oss pricing (Incremento 6.3)', () => {
+  it('COST-07-A: openai/gpt-oss-120b is a known, non-zero priced model', () => {
+    const r = estimateCost(1_000_000, 'openai/gpt-oss-120b')
+    expect(r.unknownModel).toBe(false)
+    // 50/50 split at $0.15 in / $0.60 out per 1M → $0.375
+    expect(r.estimatedUsd).toBeCloseTo(0.375, 6)
+  })
+
+  it('COST-07-B: openai/gpt-oss-20b is known', () => {
+    expect(getKnownModelIds()).toContain('openai/gpt-oss-20b')
+  })
+})

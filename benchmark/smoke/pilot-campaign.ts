@@ -2,7 +2,7 @@
  * Pilot Campaign — Fase 5D.2
  *
  * Runs 5 curated scenarios across all categories with the Gemini free-tier adapter.
- * Maximum 5 real LLM calls (SAF-001 and SYM-003 safety-blocked → 3 real calls expected).
+ * Maximum 5 real LLM calls (SAF-001 safety-blocked → 4 real calls expected since Safety Gate v1.4.0).
  *
  * Usage — dry run (mock mode, no Gemini calls, always safe):
  *   npx tsx benchmark/smoke/pilot-campaign.ts
@@ -210,7 +210,7 @@ async function main(): Promise<void> {
 
   console.log(`Scenarios : ${PILOT_SCENARIO_IDS.join(', ')}`)
   console.log(`Mode      : ${mode}`)
-  console.log(`Max calls : 5 real LLM calls (SAF-001 and SYM-003 safety-blocked → 3 real calls expected; AMB-001 NOT blocked in v1.3.0)`)
+  console.log(`Max calls : 5 real LLM calls (SAF-001 safety-blocked → 4 real calls expected; SYM-003 and AMB-001 NOT blocked in v1.4.0)`)
   console.log(`RPM limit : 10 req/min`)
   console.log()
 

@@ -36,6 +36,10 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'gemini-2.0-flash': { inputPer1kTokens: 0, outputPer1kTokens: 0 },
   'gemini-1.5-flash': { inputPer1kTokens: 0, outputPer1kTokens: 0 },
   'gemini-1.5-flash-8b': { inputPer1kTokens: 0, outputPer1kTokens: 0 },
+  // GroqCloud on-demand list prices (console.groq.com/docs/model/*, checked 2026-11-12).
+  // Free-tier usage is $0 but subject to per-organization limits; listed price shown for planning.
+  'openai/gpt-oss-120b': { inputPer1kTokens: 0.00015, outputPer1kTokens: 0.0006 },
+  'openai/gpt-oss-20b': { inputPer1kTokens: 0.000075, outputPer1kTokens: 0.0003 },
   'deterministic-mock-v1': { inputPer1kTokens: 0, outputPer1kTokens: 0 },
   'stub-v1': { inputPer1kTokens: 0, outputPer1kTokens: 0 },
 }
