@@ -232,6 +232,18 @@ ReportView / SafetyAlert (src/components/)
 
 ---
 
+## Analítica de visitas (piloto del hackatón)
+
+La web incluye el script de **Vercel Web Analytics** (cargado después de que la página sea interactiva). Para empezar a registrar visitas, habilitá **Web Analytics** en el panel de Vercel del proyecto `chuya-motor` y desplegá la rama aprobada en producción.
+
+- El reporte de Vercel permite observar visitantes y páginas vistas. Una visita a `/demo/falla` **no prueba** que se haya completado un análisis.
+- No se envían síntomas, presupuestos, patentes, marca/modelo ni el contenido de formularios a la analítica de visitas.
+- Esta integración no mide eventos de éxito de análisis, usuarios registrados, personas entrevistadas ni disposición a pagar.
+- Para evidencia de tracción, combiná los datos agregados de visitas con pruebas observadas y feedback voluntario, anonimizados y documentados (fecha, cantidad de participantes, procedimiento y evidencia).
+- No reportes páginas vistas como usuarios únicos, ni respuestas del research como usuarios que probaron la aplicación.
+
+---
+
 ## Limitaciones actuales
 
 - **Sin persistencia:** no hay base de datos. Los casos no se guardan entre sesiones.
