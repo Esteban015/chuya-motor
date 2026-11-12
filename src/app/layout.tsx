@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import type { CSSProperties } from 'react'
+import Script from 'next/script'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -24,7 +25,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="font-sans bg-brand-bg text-brand-text antialiased">{children}</body>
+      <body className="font-sans bg-brand-bg text-brand-text antialiased">
+        {children}
+        {/* Analytics de visitas de Vercel. No se envían datos de formularios ni consultas. */}
+        <Script src="/_vercel/insights/script.js" strategy="afterInteractive" />
+      </body>
     </html>
   )
 }
