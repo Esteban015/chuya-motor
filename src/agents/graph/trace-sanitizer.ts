@@ -7,7 +7,7 @@
 //   - errorCode is a structured code (never free-text from user input)
 //   - traceId (=caseId) is a UUID — correlation only, not linked to user identity
 //   - tokensUsed is a numeric count — no content
-import type { TraceMetadata } from './trace'
+import { safeSchemaIssues, type TraceMetadata } from './trace'
 
 export interface SafeTraceData {
   nodeId: string
@@ -22,6 +22,7 @@ export interface SafeTraceData {
   policyVersion?: string
   resultType?: string
   tokensUsed?: number
+  schemaIssues?: string[]
   dataLabel: 'synthetic_demo' | 'user_input' | 'unknown'
 }
 
@@ -44,6 +45,9 @@ export function sanitizeTrace(trace: TraceMetadata): SafeTraceData {
   if (trace.policyVersion !== undefined) safe.policyVersion = trace.policyVersion
   if (trace.resultType !== undefined) safe.resultType = trace.resultType
   if (trace.tokensUsed !== undefined) safe.tokensUsed = trace.tokensUsed
+  // Re-validated here: the allowlist never trusts the producer.
+  const schemaIssues = safeSchemaIssues(trace.schemaIssues)
+  if (schemaIssues) safe.schemaIssues = schemaIssues
 
   return safe
 }

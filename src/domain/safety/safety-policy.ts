@@ -1,18 +1,13 @@
 import { SAFETY_SIGNAL_GROUPS, SAFETY_POLICY_VERSION, COVERAGE_DISCLAIMER } from './blocklist'
+import { matchesBrakeCapacityLoss } from './brake-capacity-signals'
+import { normalizeText } from './text-normalization'
+import { maskNegatedHazards, detectExplicitHazard } from './hazard-signals'
 
 // D-1 — 4-stage deterministic safety gate pipeline:
 // 1. normalize  2. exact phrase match  3. co-occurrence of stems  4. intent classification
 
-// Stage 1: normalize — lowercase, remove accents, collapse whitespace
-export function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
+// Stage 1: normalize — lowercase, remove accents, collapse whitespace (text-normalization.ts, 6.4D)
+export { normalizeText }
 
 // Stage 2 / 3 helper: Spanish suffix stemmer (deterministic, no ML)
 // Rules ordered longest-first to prevent premature truncation
@@ -137,7 +132,10 @@ const ACTION_VERB_STEMS = [
 const PROFESSIONAL_CONTEXT_STEMS = ['tall', 'mecan', 'tecnic', 'profes', 'diagnostic', 'presupuest', 'perit']
 
 // Past-tense markers — description of what already happened, not DIY intent
-const PAST_MARKERS = ['paso', 'ocurrio', 'sucedio', 'fue', 'fui', 'tuve', 'estaba', 'habia', 'empezo', 'salio', 'quede', 'perdi', 'vine', 'llego', 'noto']
+// v1.3.1 (6.4B, D-03): "fueron" added — plural of "fue". Without it SAFETY.md's own example
+// "se me fueron los frenos en la ruta" was blocked as ambiguous. DIY (checked earlier) and
+// persistence markers still take precedence.
+const PAST_MARKERS = ['paso', 'ocurrio', 'sucedio', 'fue', 'fueron', 'fui', 'tuve', 'estaba', 'habia', 'empezo', 'salio', 'quede', 'perdi', 'vine', 'llego', 'noto']
 
 // Persistence markers — indicate the problem is active/ongoing despite prior context.
 // Presence overrides professional_context and past_description early exits (FP-02).
@@ -259,6 +257,88 @@ function findKeywordMatch(normalized: string): { category: string; signal: strin
   return null
 }
 
+// ── Stage AM-01 calibration (v1.4.0, Incremento 6.4C, D-03) ──────────────────
+// AM-01 blocks every ambiguous input that mentions a safety keyword. Two DESCRIPTIVE symptom
+// families were over-blocked and are now allowed when — and only when — the context shows a
+// symptom description (not a request) and no hazard signal is present:
+//   1. conventional 12 V battery: "la batería se descarga", "no arranca", "quedó tirada";
+//   2. brake noise / vibration:    "los frenos hacen ruido", "chillan", "rechinan", "vibran".
+// Every keyword hit in the text must be covered by an exemption; any other category (steering,
+// fire, fuel, …), any high-voltage context, battery hazard, intervention verb or loss of braking
+// capacity keeps the conservative block. Stage 2 (exact phrases) and Stage 3 (DIY co-occurrence)
+// run before and are unaffected. Exempted inputs are reported as 'symptom_description'.
+// Context lists match by prefix on RAW normalized tokens (the stemmer cuts "hibrido"→"hibr",
+// "tension"→"ten"); keyword hits reuse the stem matching of AM-01. No list is exhaustive.
+
+// Symptom descriptors of a discharged / failing 12 V battery.
+const BATTERY_SYMPTOM_PREFIXES = ['descarg', 'arranc', 'agot', 'muert', 'tirad', 'prend', 'enciend', 'testig', 'luz', 'dur', 'carg', 'baj', 'qued']
+// High-voltage (hybrid / EV traction) context: never exempt.
+const HIGH_VOLTAGE_CONTEXT_PREFIXES = ['hibr', 'electr', 'tension', 'voltaj', 'traccion', 'enchuf', 'kwh']
+// Battery hazards (hydrogen, acid, swelling, heat, sparks): never exempt.
+const BATTERY_HAZARD_PREFIXES = ['chisp', 'hinch', 'infl', 'explot', 'acid', 'azufr', 'podrid', 'derram', 'gote', 'fug', 'calient', 'recalient', 'olor', 'huel', 'sulfur']
+// Physical intervention vocabulary not covered by ACTION_VERB_STEMS: never exempt.
+const INTERVENTION_PREFIXES = ['desconect', 'conect', 'puent', 'pinz', 'born', 'cabl', 'empalm', 'multimetr', 'tester']
+// Brake noise / vibration descriptors (machine behavior, 3rd person or nouns).
+const BRAKE_NOISE_PREFIXES = ['ruid', 'chirri', 'chill', 'rechin', 'sonid', 'suen', 'zumb', 'golpet', 'cruj', 'chasquid', 'vibr', 'tiembl']
+// Brake keywords that the noise exemption may cover. "liquido"/"hidraulico" (fluid, pressure) never.
+const BRAKE_EXEMPTIBLE_KEYWORDS = new Set(['frenos', 'freno', 'frenado', 'pastillas', 'discos', 'abs'])
+
+interface KeywordHit {
+  category: string
+  keyword: string
+}
+
+// All safety keyword hits (every group, every keyword) — used by the AM-01 calibration.
+// Keyword hits that are verb forms of another word, ignored ONLY by this calibration:
+// "llama" (flame, fire_smoke) stem-matches "llamar a alguien" (SYM-003). The noun keeps blocking.
+const KEYWORD_TOKEN_FILTER: Record<string, RegExp> = { llama: /^llam(a|as|arada|aradas)$/ }
+
+function findAllKeywordMatches(tokens: string[], stems: string[]): KeywordHit[] {
+  const hits: KeywordHit[] = []
+  for (const group of SAFETY_SIGNAL_GROUPS) {
+    for (const keyword of group.keywords) {
+      const keywordStem = stemToken(normalizeText(keyword))
+      const filter = KEYWORD_TOKEN_FILTER[keyword]
+      if (stems.some((s, i) => (s === keywordStem || s.startsWith(keywordStem)) && (!filter || filter.test(tokens[i]!)))) {
+        hits.push({ category: group.category, keyword })
+      }
+    }
+  }
+  return hits
+}
+
+function hasPrefix(tokens: string[], list: readonly string[]): boolean {
+  return tokens.some((t) => list.some((p) => t.startsWith(p)))
+}
+
+/** True when an AM-01-ambiguous input is a descriptive 12 V battery or brake-noise symptom. */
+function isDescriptiveSymptomExemption(normalized: string): boolean {
+  const tokens = normalized.split(' ')
+  const stems = tokens.map(stemToken)
+  const hits = findAllKeywordMatches(tokens, stems)
+  if (hits.length === 0) return false
+  if (hasPrefix(tokens, INTERVENTION_PREFIXES)) return false
+  if (matchesBrakeCapacityLoss(normalized)) return false
+  // Persistence / worsening after a prior state keeps FP-02's conservative reading ("pero ahora…").
+  if (tokens.some((t) => PERSISTENCE_MARKERS.includes(t))) return false
+
+  const batteryOk = () =>
+    hasPrefix(tokens, BATTERY_SYMPTOM_PREFIXES) &&
+    !hasPrefix(tokens, HIGH_VOLTAGE_CONTEXT_PREFIXES) &&
+    !hasPrefix(tokens, BATTERY_HAZARD_PREFIXES)
+  const brakeNoiseOk = () =>
+    tokens.some((t) => t.startsWith('fren') || t.startsWith('pastill')) &&
+    // Pedal feel is closer to braking capacity than to noise: "el pedal vibra" stays blocked (AM-01-BLK-01).
+    !tokens.includes('pedal') &&
+    hasPrefix(tokens, BRAKE_NOISE_PREFIXES)
+
+  return hits.every((h) => {
+    if (h.category === 'high_voltage') return h.keyword === 'bateria' && batteryOk()
+    if (h.category === 'brakes') return BRAKE_EXEMPTIBLE_KEYWORDS.has(h.keyword) && brakeNoiseOk()
+    return false
+  })
+}
+
 // Stage 3: keyword co-occurrence — safety keyword present AND action verb confirmed (diy_intent)
 function findStemCoOccurrence(
   normalized: string,
@@ -269,7 +349,9 @@ function findStemCoOccurrence(
 }
 
 export function checkSafetyGate(userText: string): SafetyGateResult {
-  const normalized = normalizeText(userText)
+  // Stage 1 (v1.5.0): normalization + masking of explicitly NEGATED hazard spans
+  // ("no veo chispas ni olor a quemado"). Without a negated hazard this equals normalizeText().
+  const normalized = maskNegatedHazards(userText).text
 
   // Stage 2: exact phrase → block regardless of intent (highest-confidence signal).
   // Must run BEFORE intent classification so professional context cannot bypass a live danger phrase.
@@ -287,6 +369,24 @@ export function checkSafetyGate(userText: string): SafetyGateResult {
   }
 
   const intent = classifyIntent(normalized, userText)
+
+  // Stage 2b — explicit hazard precedence (v1.5.0, Incremento 6.4D, P0). An explicit, non-negated
+  // hazard (sparks, battery swelling/leak/heat/gas, fire, smoke outside the exhaust, burning smell,
+  // fuel/gas smell or leak) blocks BEFORE any permissive classification: symptom_description,
+  // informational, professional_context, past_description, budget_structured and the 6.4C
+  // descriptive exemption can no longer let it through. Loss of braking capacity is handled by
+  // brake-capacity-signals.ts (AM-01 block or CRITICAL banner, never silent) — unchanged.
+  const hazard = detectExplicitHazard(normalized)
+  if (hazard) {
+    return {
+      blocked: true,
+      triggeredCategory: hazard.category,
+      triggeredSignal: hazard.signal,
+      intentClassification: intent,
+      policyVersion: SAFETY_POLICY_VERSION,
+      coverageDisclaimer: COVERAGE_DISCLAIMER,
+    }
+  }
 
   // Professional context (after phrase check): suppress co-occurrence and ambiguous blocks.
   if (intent === 'professional_context') {
@@ -333,6 +433,17 @@ export function checkSafetyGate(userText: string): SafetyGateResult {
   // they may involve a live safety concern without explicit DIY phrasing.
   if (intent === 'ambiguous') {
     const keywordMatch = findKeywordMatch(normalized)
+    // v1.4.0 (6.4C, D-03): descriptive 12 V battery / brake-noise symptoms are not blocked.
+    if (keywordMatch && isDescriptiveSymptomExemption(normalized)) {
+      return {
+        blocked: false,
+        triggeredCategory: null,
+        triggeredSignal: null,
+        intentClassification: 'symptom_description',
+        policyVersion: SAFETY_POLICY_VERSION,
+        coverageDisclaimer: COVERAGE_DISCLAIMER,
+      }
+    }
     if (keywordMatch) {
       return {
         blocked: true,

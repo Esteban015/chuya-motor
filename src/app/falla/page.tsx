@@ -194,6 +194,7 @@ export default function FallaPage() {
               message={pageState.payload.safetyDerivationMessage}
               policyVersion={pageState.payload.policyVersion}
               coverageDisclaimer={pageState.payload.coverageDisclaimer}
+              severity={pageState.payload.severity ?? null}
             />
             <button
               type="button"

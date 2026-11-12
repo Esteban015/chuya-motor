@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { LLMAdapter, LLMCompletionRequest } from '@/agents/llm/llm-adapter'
 import { extractJSON } from '@/agents/llm/llm-json-extract'
+import { availabilityWarnings, PROTECTION_ERROR_CODES } from '@/agents/llm/llm-availability'
 import { BudgetLineSchema } from '@/domain/budget/budget'
 import type { GraphState } from '../graph-state'
 import { createTrace } from '../trace'
@@ -43,9 +44,11 @@ export function createBudgetParserNode(llmAdapter: LLMAdapter) {
         return {
           fallback: true,
           errorCode: result.error.code,
+          // 6.4D: fixed notice only when the protection layer refused the call (no provider call).
+          warnings: availabilityWarnings(result.error.code),
           traces: [
             createTrace(caseId, NODE_ID, startTime, 'fallback_used', {
-              llmCalled: true,
+              llmCalled: !PROTECTION_ERROR_CODES.has(result.error.code),
               llmModel: model,
               errorCode: result.error.code,
               dataLabel,

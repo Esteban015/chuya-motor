@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Logo } from '@/components/logo'
-import { DemoBadge } from '@/components/demo-badge'
+import { SiteModeBadge } from '@/components/ai-status-badge'
 
 export function AppHeader() {
   const pathname = usePathname()
@@ -46,7 +46,7 @@ export function AppHeader() {
               Chuya Motor
             </span>
           </Link>
-          <DemoBadge />
+          <SiteModeBadge />
         </div>
       </div>
     </header>

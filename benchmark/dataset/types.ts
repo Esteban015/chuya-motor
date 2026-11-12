@@ -64,4 +64,5 @@ export const BenchmarkScenarioSchema = z.object({
 })
 export type BenchmarkScenario = z.infer<typeof BenchmarkScenarioSchema>
 
-export const DATASET_VERSION = '1.1.0'
+// 1.2.0 (Incremento 6.4C, D-03): SYM-003 expected values follow Safety Gate v1.4.0 (12 V battery allowed).
+export const DATASET_VERSION = '1.2.0'

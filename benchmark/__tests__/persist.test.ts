@@ -3,7 +3,7 @@
  * All tests are deterministic — no real LLM calls.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
@@ -481,6 +481,27 @@ describe('PERSIST-08: deriveProvider', () => {
 
   it('PERSIST-08-C: claude model → "anthropic"', () => {
     expect(deriveProvider('claude-sonnet-4-6', 'real')).toBe('anthropic')
+  })
+
+  it('PERSIST-08-D: groq gpt-oss models → "groq" regardless of LLM_PROVIDER env', () => {
+    vi.stubEnv('LLM_PROVIDER', '')
+    expect(deriveProvider('openai/gpt-oss-120b', 'real')).toBe('groq')
+    expect(deriveProvider('openai/gpt-oss-20b', 'real')).toBe('groq')
+    vi.unstubAllEnvs()
+  })
+})
+
+// ── PERSIST-08B: reasonCode keeps LLM error codes (Incremento 6.3) ───────────
+
+describe('PERSIST-08B: reasonCode preserves LLM API error codes', () => {
+  it.each([
+    'LLM_QUOTA_EXCEEDED',
+    'LLM_PROVIDER_UNAVAILABLE',
+    'LLM_MODEL_UNAVAILABLE',
+    'LLM_EMPTY_RESPONSE',
+  ])('PERSIST-08B: diagnosisAgent::%s is persisted as its code', (code) => {
+    const r = minimalBenchmarkResult({ llmDiagnosis: `diagnosisAgent::${code}` })
+    expect(sanitizeForPersistence(r).reasonCode).toBe(code)
   })
 })
 

@@ -177,3 +177,20 @@ describe('TSAN-05: all status values survive sanitization', () => {
     })
   }
 })
+
+// ── 6.4F (D-13): schema issue codes are structural only ──────────────────────
+
+describe('TS-6.4F: schemaIssues allowlist', () => {
+  it('keeps "<path pattern>:<code>" codes and drops anything that could carry content', () => {
+    const safe = sanitizeTrace(
+      makeTrace({
+        schemaIssues: ['hypotheses.*.caveats.*:too_big', '$:json_parse', 'Mi patente es ABC123', 'facts.*:too big with text', 'x:y'.repeat(40)],
+      }),
+    )
+    expect(safe.schemaIssues).toEqual(['hypotheses.*.caveats.*:too_big', '$:json_parse'])
+  })
+
+  it('omits the field when nothing structural remains', () => {
+    expect(sanitizeTrace(makeTrace({ schemaIssues: ['texto libre del modelo'] }))).not.toHaveProperty('schemaIssues')
+  })
+})

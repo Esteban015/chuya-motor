@@ -28,6 +28,19 @@ export interface SeverityAssessmentResult {
   action: string
 }
 
+// ── AI processing status (6.4E) ───────────────────────────────────────────
+// Which processing produced the response — derived server-side (ai-status.ts), never by the LLM.
+// The badge shown to the user is rendered from this field only.
+
+export type AiUnavailableReason = 'visitor_limit' | 'daily_quota' | 'busy' | 'disabled' | 'provider_error'
+
+export type AiStatus =
+  | { mode: 'ai' }
+  | { mode: 'simulated' }
+  | { mode: 'withheld' }
+  | { mode: 'unavailable'; reason: AiUnavailableReason }
+  | { mode: 'none' }
+
 // ── Response: success (200) ────────────────────────────────────────────────
 
 export interface NodeTraceSummary {
@@ -42,6 +55,7 @@ export interface NodeTraceSummary {
   policyVersion?: string
   resultType?: string
   tokensUsed?: number
+  schemaIssues?: string[]
   dataLabel: 'synthetic_demo' | 'user_input' | 'unknown'
 }
 
@@ -80,6 +94,11 @@ export interface ClientAnalyzeOutput {
   nodeTrace: NodeTraceSummary[] | null
   // Severity assessment — null means normal (no banner). Computed server-side, never from LLM.
   severity: SeverityAssessmentResult | null
+  /**
+   * 6.4E — additive field. What actually processed this request (real AI, stub, withheld,
+   * unavailable). Optional in the type so clients tolerate servers that predate it.
+   */
+  aiStatus?: AiStatus
 }
 
 // ── Response: errors ──────────────────────────────────────────────────────
@@ -90,6 +109,12 @@ export interface SafetyBlockPayload {
   safetyDerivationMessage: string
   policyVersion: string
   coverageDisclaimer: string
+  /**
+   * 6.4B (D-02) — additive, backward-compatible field. Deterministic critical warning when the
+   * blocked query describes loss of braking capacity ("No conduzcas el vehículo…"); null otherwise.
+   * Optional in the type so clients tolerate servers that predate it.
+   */
+  severity?: SeverityAssessmentResult | null
 }
 
 export type AnalyzeApiError =

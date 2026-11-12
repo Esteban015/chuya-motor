@@ -13,6 +13,7 @@ import { createBudgetParserNode } from './nodes/budget-parser'
 import { budgetCalculatorNode } from './nodes/budget-calculator'
 import { createEvaluatorNode } from './nodes/evaluator'
 import { reportBuilderNode } from './nodes/report-builder'
+import { outputSafetyGuardNode } from './nodes/output-safety-guard'
 import { AnalyzeInputSchema, type AnalyzeInput, type AnalyzeOutput } from './types'
 
 export interface GraphDeps {
@@ -44,13 +45,16 @@ export function createAnalyzeGraph(deps: GraphDeps = {}) {
     .addNode('diagnosisAgent', createDiagnosisAgentNode(llmAdapter))
     .addNode('budgetParser', createBudgetParserNode(llmAdapter))
     .addNode('budgetCalculator', budgetCalculatorNode)
+    .addNode('outputSafetyGuard', outputSafetyGuardNode)
     .addNode('evaluator', createEvaluatorNode(documentSourcePort))
     .addNode('reportBuilder', reportBuilderNode)
     .addEdge(START, 'validator')
     .addEdge('validator', 'safetyGate')
     .addConditionalEdges('safetyGate', routeAfterSafetyGate)
     .addConditionalEdges('router', routeAfterRouter)
-    .addEdge('diagnosisAgent', 'evaluator')
+    // 6.4B (D-05): LLM diagnosis text is validated server-side before anything else uses it.
+    .addEdge('diagnosisAgent', 'outputSafetyGuard')
+    .addEdge('outputSafetyGuard', 'evaluator')
     .addEdge('budgetParser', 'budgetCalculator')
     .addEdge('budgetCalculator', 'evaluator')
     .addEdge('evaluator', 'reportBuilder')

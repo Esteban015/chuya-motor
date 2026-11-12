@@ -14,3 +14,9 @@ test-results/
 .turbo/
 benchmark/results/*.json
 !benchmark/results/.gitkeep
+# Incremento 6.3 — provider comparison reports and atomic-write temp files
+benchmark/results/*.md
+benchmark/results/*.tmp
+
+# Incremento 6.4A — local human quality reviews (contain LLM-generated text; never commit)
+reviews-local/

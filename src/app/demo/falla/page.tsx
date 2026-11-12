@@ -9,7 +9,7 @@ import type {
   SafetyBlockPayload,
 } from '@/app/api/analyze/schema'
 import { StepIndicator } from '@/components/step-indicator'
-import { DemoBadge } from '@/components/demo-badge'
+import { SiteModeBadge } from '@/components/ai-status-badge'
 import { PrivacyNotice } from '@/components/privacy-notice'
 import { SafetyAlert } from '@/components/safety-alert'
 import { ReportView } from '@/components/report-view'
@@ -192,7 +192,7 @@ export default function DemoFallaPage() {
             </svg>
             <span>Demo</span>
           </Link>
-          <DemoBadge />
+          <SiteModeBadge />
         </div>
       </header>
 
@@ -445,6 +445,7 @@ export default function DemoFallaPage() {
               message={pageState.payload.safetyDerivationMessage}
               policyVersion={pageState.payload.policyVersion}
               coverageDisclaimer={pageState.payload.coverageDisclaimer}
+              severity={pageState.payload.severity ?? null}
             />
             <button type="button" onClick={resetAll} className="rounded-xl border border-brand-border bg-white px-4 py-2.5 text-sm font-medium text-brand-text hover:bg-brand-bg transition-colors">
               Volver a intentar

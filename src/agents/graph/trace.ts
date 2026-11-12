@@ -15,6 +15,8 @@ export interface TraceMetadata {
   fallbackActivated: boolean
   resultType?: string       // semantic description of output kind (no content); e.g. 'hypotheses_generated'
   tokensUsed?: number       // token usage when available from real LLM (optional, mock=undefined)
+  /** 6.4F (D-13): failed / recovered schema constraints as "<path pattern>:<code>" — never content. */
+  schemaIssues?: string[]
 }
 
 export interface CreateTraceOptions {
@@ -27,6 +29,14 @@ export interface CreateTraceOptions {
   fallbackActivated?: boolean
   resultType?: string
   tokensUsed?: number
+  schemaIssues?: string[]
+}
+
+/** Only structural codes like "hypotheses.*.caveats.*:too_big" survive (max 8). */
+export function safeSchemaIssues(issues: readonly string[] | undefined): string[] | undefined {
+  if (!issues || issues.length === 0) return undefined
+  const safe = issues.filter((i) => /^[a-zA-Z*.$]{1,60}:[a-z_]{1,40}$/.test(i)).slice(0, 8)
+  return safe.length > 0 ? safe : undefined
 }
 
 export function createTrace(
@@ -53,6 +63,8 @@ export function createTrace(
   if (options.errorCode !== undefined) trace.errorCode = options.errorCode
   if (options.resultType !== undefined) trace.resultType = options.resultType
   if (options.tokensUsed !== undefined) trace.tokensUsed = options.tokensUsed
+  const schemaIssues = safeSchemaIssues(options.schemaIssues)
+  if (schemaIssues) trace.schemaIssues = schemaIssues
 
   // TRACE_VERBOSE: strict conjunction — only when explicitly enabled AND not production (Ajuste C)
   if (process.env['TRACE_VERBOSE'] === 'true' && process.env['NODE_ENV'] !== 'production') {

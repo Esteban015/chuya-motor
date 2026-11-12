@@ -166,7 +166,7 @@ test('E2E-F6-09: /demo/falla wizard — step 1 → step 2 → submit → hypothe
   await page.selectOption('#occurrence', 'Al arrancar')
   await page.click('button[type="submit"]')
 
-  await expect(page.getByText('Hipótesis orientativas')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).toBeVisible({ timeout: 15000 })
   await expect(page.getByText('MODO DEMO · RESPUESTAS SIMULADAS').first()).toBeVisible()
   await expect(page.getByText('Consulta bloqueada por seguridad')).not.toBeVisible()
 })
@@ -188,7 +188,7 @@ test('E2E-F6-11: /demo/falla wizard — critical brake symptom shows SeverityBan
   await page.click('button[type="submit"]')
 
   // Wait for hypotheses to appear (indicates non-blocked success state)
-  await expect(page.getByText('Hipótesis orientativas')).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: 'Hipótesis orientativas' })).toBeVisible({ timeout: 15000 })
 
   // SeverityBanner with data-severity="critical" must appear ABOVE hypotheses
   const banner = page.locator('[data-severity="critical"]')

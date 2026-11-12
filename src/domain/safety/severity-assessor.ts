@@ -15,6 +15,8 @@
  */
 
 import { normalizeText } from './safety-policy'
+import { matchesBrakeCapacityLoss } from './brake-capacity-signals'
+import { detectExplicitHazardInText, type ExplicitHazardKind } from './hazard-signals'
 
 export type SeverityLevel = 'normal' | 'high' | 'critical'
 
@@ -37,7 +39,36 @@ type Rule = {
 // These indicate a potential brake or safety system failure that passed the Safety Gate
 // (phrased in ways that don't trigger exact-phrase Stage 2, but still imply a live risk).
 
+// ── Brake-capacity loss (Incremento 6.4B, D-02) ───────────────────────────────
+// Narrow, deterministic detector for "loss or possible absence of braking capacity".
+// Used (a) as the first CRITICAL rule for non-blocked symptoms and (b) as the ONLY severity rule
+// applied to Safety-Gate-blocked queries (see resolveUserFacingSeverity). It deliberately does
+// NOT match generic brake mentions, DIY requests, noises or fluid smells: those must not turn a
+// block into a "No conduzcas" alert. 6.4C: the patterns live in brake-capacity-signals.ts, a
+// shared catalog also read by the Safety Gate; the two components stay independent.
+const BRAKE_CAPACITY_LOSS_ASSESSMENT: SeverityAssessment = Object.freeze({
+  level: 'critical',
+  title: 'Atención: síntoma crítico de seguridad',
+  message: 'El problema descripto podría comprometer seriamente el sistema de frenos.',
+  action: 'No conduzcas el vehículo. Solicitá asistencia profesional antes de volver a utilizarlo.',
+})
+
+/** True when the text describes loss or possible absence of braking capacity (D-02). */
+export function detectsBrakeCapacityLoss(userText: string): boolean {
+  const n = normalizeText(userText)
+  return matchesBrakeCapacityLoss(n)
+}
+
 const CRITICAL_RULES: readonly Rule[] = [
+  // D-02 (6.4B): explicit loss of braking capacity — "casi no frena", "sin frenos", "no responden".
+  {
+    level: 'critical',
+    test: (n) => matchesBrakeCapacityLoss(n),
+    title: BRAKE_CAPACITY_LOSS_ASSESSMENT.title,
+    message: BRAKE_CAPACITY_LOSS_ASSESSMENT.message,
+    action: BRAKE_CAPACITY_LOSS_ASSESSMENT.action,
+  },
+
   // Pedal/brake requires extreme travel to stop — various phrasings not covered by Stage 2 exact phrases.
   // Catches: "pisar el pedal muy a fondo para frenar", "pedal de freno se va al fondo",
   //          "apretar el freno hasta el fondo", "freno al fondo", "frenos al fondo".
@@ -61,13 +92,14 @@ const CRITICAL_RULES: readonly Rule[] = [
 
   // Braking clearly insufficient or barely working — not caught by Safety Gate Stage 2 exact phrases.
   // Catches: "frena muy poco", "casi no frena", "frenado insuficiente", "apenas frena".
+  // 6.4C (D-03): "un poco" excluded — "los frenos chirrían un poco" is a noise, not insufficient braking.
   // SV-14 fix: added apenas.{0,15}fren and fren\w{0,2}\s+apenas to cover "apenas frena",
   //            "apenas puedo frenar", "frena apenas".
   {
     level: 'critical',
     test: (n) =>
       /fren/.test(n) &&
-      /(poc[ao]\s+fren|fren.{0,25}(muy\s+poc|poc[ao]|casi\s+nad|casi\s+no|insuficien|deficien|no\s+fren.{0,10}bien)|fren.{0,10}mal\b|apenas.{0,15}fren|fren\w{0,2}\s+apenas)/.test(
+      /(poc[ao]\s+fren|fren.{0,25}(muy\s+poc|(?<!\bun\s)poc[ao]|casi\s+nad|casi\s+no|insuficien|deficien|no\s+fren.{0,10}bien)|fren.{0,10}mal\b|apenas.{0,15}fren|fren\w{0,2}\s+apenas)/.test(
         n,
       ),
     title: 'Atención: síntoma crítico de seguridad',
@@ -107,10 +139,11 @@ const HIGH_RULES: readonly Rule[] = [
   },
 
   // Noise specifically when braking (chirping, grinding, clicking near brakes)
+  // 6.4C (D-03): + chill/suen/sonid/zumb/golpet and "pastillas" — prudent banner for brake noise now allowed by the gate.
   {
     level: 'high',
     test: (n) =>
-      /(chirri|rechin|cruji).{0,30}fren|fren.{0,30}(chirri|rechin|cruji)|ruido.{0,20}fren|fren.{0,20}ruido/.test(
+      /(chirri|rechin|cruji|chill|suen|sonid|zumb|golpet|ruido).{0,30}(fren|pastill)|(fren|pastill).{0,30}(chirri|rechin|cruji|chill|suen|sonid|zumb|golpet|ruido)/.test(
         n,
       ),
     title: 'Síntoma de alta atención',
@@ -200,4 +233,64 @@ export function assessSeverity(
   }
 
   return null
+}
+
+// ── Preventive warnings for explicit hazards (Incremento 6.4D, P0) ─────────────
+// Fixed, deterministic texts. They tell the user what NOT to do and to get professional help;
+// they never instruct to manipulate the battery, wiring, fuel or safety components.
+const HAZARD_ASSESSMENTS: Readonly<Record<ExplicitHazardKind, SeverityAssessment>> = Object.freeze({
+  fire_smoke: Object.freeze({
+    level: 'critical' as const,
+    title: 'Atención: posible riesgo de incendio',
+    message: 'El humo o el fuego pueden indicar un principio de incendio.',
+    action:
+      'Si el vehículo está en marcha, detenelo en un lugar seguro y apagá el motor. Alejate del vehículo junto con los acompañantes, no abras el capot y llamá a emergencias (911) o a bomberos (100). No vuelvas a usarlo sin asistencia profesional.',
+  }),
+  fuel_gas_leak: Object.freeze({
+    level: 'critical' as const,
+    title: 'Atención: posible pérdida de combustible o gas',
+    message: 'El olor o la pérdida de combustible o gas implican riesgo de incendio.',
+    action:
+      'No arranques ni conduzcas el vehículo. Evitá llamas, cigarrillos y chispas cerca, no manipules el sistema de combustible y alejate del vehículo. Solicitá asistencia profesional.',
+  }),
+  battery_electrical: Object.freeze({
+    level: 'critical' as const,
+    title: 'Atención: posible riesgo eléctrico o químico',
+    message:
+      'Chispas, deformación, calor excesivo, olor a huevo podrido o pérdida de líquido en la batería o el cableado pueden indicar riesgo de incendio, explosión o quemaduras químicas.',
+    action:
+      'No toques la batería ni el cableado y no intentes arrancar el vehículo. Mantené distancia, evitá llamas o cigarrillos cerca y solicitá asistencia profesional.',
+  }),
+  burning_smell: Object.freeze({
+    level: 'critical' as const,
+    title: 'Atención: posible riesgo de incendio',
+    message: 'El olor a quemado puede indicar recalentamiento de cables, frenos u otras piezas.',
+    action:
+      'Detené el vehículo en un lugar seguro, apagá el motor y no sigas conduciendo. Si aparece humo, alejate del vehículo y llamá a emergencias (911). Solicitá asistencia profesional.',
+  }),
+})
+
+/**
+ * User-facing severity with an explicit precedence between Safety Gate and Severity Assessor
+ * (Incremento 6.4B, D-02). Single source of truth for POST /api/analyze and local review tools.
+ *
+ * 1. The Safety Gate is authoritative on BLOCKING. Severity never unblocks, never calls the LLM
+ *    and never exposes hypotheses.
+ * 2. Not blocked → assessSeverity(userText, route) — unchanged behavior (route=symptom only).
+ * 3. Blocked → explicit hazard (6.4D: fire/smoke, fuel/gas, battery/electrical, burning smell) gets
+ *    its fixed preventive warning; otherwise ONLY the brake-capacity-loss detector applies. A block that describes loss of
+ *    braking capacity gets the explicit critical "No conduzcas" warning; any other block
+ *    (DIY, generic brake mention, noise, battery, …) returns null so no critical alert is invented.
+ */
+export function resolveUserFacingSeverity(ctx: {
+  userText: string
+  safetyBlocked: boolean
+  route: string | null
+}): SeverityAssessment | null {
+  if (!ctx.safetyBlocked) return assessSeverity(ctx.userText, ctx.route)
+  // 6.4D (P0): an explicit fire / fuel / battery-electrical / burning-smell hazard gets its fixed
+  // preventive warning. Negated hazards are masked exactly as in the Safety Gate.
+  const hazard = detectExplicitHazardInText(ctx.userText)
+  if (hazard) return { ...HAZARD_ASSESSMENTS[hazard.kind] }
+  return detectsBrakeCapacityLoss(ctx.userText) ? { ...BRAKE_CAPACITY_LOSS_ASSESSMENT } : null
 }

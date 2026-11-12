@@ -1,38 +1,26 @@
 import { z } from 'zod'
-import type { LLMAdapter, LLMCompletionRequest } from '@/agents/llm/llm-adapter'
+import type { LLMAdapter } from '@/agents/llm/llm-adapter'
+import { refineDiagnosisOutput } from '@/domain/quality/diagnosis-quality'
+import { buildDiagnosisRequest, vehicleLineOf } from './diagnosis-prompt'
 import { extractJSON } from '@/agents/llm/llm-json-extract'
+import { availabilityWarnings, PROTECTION_ERROR_CODES } from '@/agents/llm/llm-availability'
+import { describeZodIssues, normalizeDiagnosisCandidate } from '@/domain/quality/diagnosis-normalization'
+import { scanUnsafeTexts } from '@/domain/safety/output-safety'
+import { resolveUserFacingSeverity } from '@/domain/safety/severity-assessor'
+import { withheldWarnings } from './output-safety-guard'
 import type { GraphState } from '../graph-state'
 import { HypothesisSchema } from '../types'
 import { createTrace } from '../trace'
 
 const NODE_ID = 'diagnosisAgent'
 
+// Prompt: diagnosis-prompt.ts (v2.0.0, 6.4D) — shared by every provider.
+
 const DiagnosisResponseSchema = z.object({
   facts: z.array(z.string().max(500)).max(10),
   hypotheses: z.array(HypothesisSchema).max(5),
   questions: z.array(z.string().max(300)).max(5),
 })
-
-function buildDiagnosisRequest(state: GraphState): LLMCompletionRequest {
-  const vehicleLine = state.vehicle
-    ? `${state.vehicle.make ?? ''} ${state.vehicle.model ?? ''} ${state.vehicle.year ?? ''}`.trim()
-    : 'No especificado'
-
-  return {
-    // [DIAGNOSIS_REQUEST] marker enables deterministic mock routing
-    system:
-      '[DIAGNOSIS_REQUEST]\nAnalizá los síntomas del vehículo y generá hipótesis de diagnóstico orientativas. ' +
-      'Respondé ÚNICAMENTE con JSON válido. Sin bloques Markdown. Sin texto antes ni después del JSON. ' +
-      'Estructura exacta: { "facts": string[], "hypotheses": [{ "statement": string, "confidence": "low"|"medium"|"high", "caveats": string[], "evidenceIds": string[] }], "questions": string[] }. ' +
-      'IMPORTANTE: confidence DEBE ser exactamente una de estas tres cadenas: "low", "medium" o "high". No usar valores numéricos. ' +
-      'Máximo: 10 facts, 5 hypotheses, 5 questions. No afirmes diagnósticos definitivos.',
-    userContent: [
-      `Vehículo: ${vehicleLine}`,
-      `Nivel de experiencia: ${state.experienceLevel}`,
-      `Síntoma: ${state.userText ?? ''}`,
-    ].join('\n'),
-  }
-}
 
 export function createDiagnosisAgentNode(llmAdapter: LLMAdapter) {
   return async function diagnosisAgentNode(state: GraphState): Promise<Partial<GraphState>> {
@@ -48,9 +36,11 @@ export function createDiagnosisAgentNode(llmAdapter: LLMAdapter) {
         return {
           fallback: true,
           errorCode: result.error.code,
+          // 6.4D: fixed notice only when the protection layer refused the call (no provider call).
+          warnings: availabilityWarnings(result.error.code),
           traces: [
             createTrace(caseId, NODE_ID, startTime, 'fallback_used', {
-              llmCalled: true,
+              llmCalled: !PROTECTION_ERROR_CODES.has(result.error.code),
               llmModel: model,
               errorCode: result.error.code,
               dataLabel,
@@ -61,58 +51,88 @@ export function createDiagnosisAgentNode(llmAdapter: LLMAdapter) {
         }
       }
 
+      // 6.4F (D-13): the failed / recovered constraint is recorded as a structural code only.
+      const schemaFailure = (schemaIssues: string[]): Partial<GraphState> => ({
+        fallback: true,
+        errorCode: 'LLM_SCHEMA_VIOLATION',
+        traces: [
+          createTrace(caseId, NODE_ID, startTime, 'fallback_used', {
+            llmCalled: true,
+            llmModel: model,
+            errorCode: 'LLM_SCHEMA_VIOLATION',
+            dataLabel,
+            fallbackActivated: true,
+            tokensUsed: result.tokensUsed,
+            resultType: 'diagnosis_schema_error',
+            schemaIssues,
+          }),
+        ],
+      })
+
       let parsed: unknown
       try {
         // extractJSON strips markdown code blocks (Gemini Flash frequently adds them)
         parsed = JSON.parse(extractJSON(result.content))
       } catch {
-        return {
-          fallback: true,
-          errorCode: 'LLM_SCHEMA_VIOLATION',
-          traces: [
-            createTrace(caseId, NODE_ID, startTime, 'fallback_used', {
-              llmCalled: true,
-              llmModel: model,
-              errorCode: 'LLM_SCHEMA_VIOLATION',
-              dataLabel,
-              fallbackActivated: true,
-              tokensUsed: result.tokensUsed,
-              resultType: 'diagnosis_schema_error',
-            }),
-          ],
+        return schemaFailure(['$:json_parse'])
+      }
+
+      // 6.4F (D-13): recover preventable format violations by REMOVING items (never truncating or
+      // rewriting). Irrecoverable answers keep the safe fallback.
+      const normalized = normalizeDiagnosisCandidate(parsed)
+      if (!normalized.ok) return schemaFailure(normalized.issues)
+
+      // Removed text is still scanned: normalization must never hide an unsafe recommendation.
+      if (normalized.droppedTexts.length > 0) {
+        const severity = resolveUserFacingSeverity({ userText: state.userText, safetyBlocked: false, route: state.route })
+        const violations = scanUnsafeTexts(normalized.droppedTexts, { severityLevel: severity?.level ?? 'normal' })
+        if (violations.length > 0) {
+          return {
+            facts: [],
+            hypotheses: [],
+            questions: [],
+            fallback: true,
+            errorCode: 'LLM_OUTPUT_UNSAFE',
+            warnings: withheldWarnings(violations),
+            traces: [
+              createTrace(caseId, NODE_ID, startTime, 'fallback_used', {
+                llmCalled: true,
+                llmModel: model,
+                errorCode: 'LLM_OUTPUT_UNSAFE',
+                dataLabel,
+                fallbackActivated: true,
+                tokensUsed: result.tokensUsed,
+                resultType: 'output_safety_rejected_in_removed_text',
+                schemaIssues: normalized.issues,
+              }),
+            ],
+          }
         }
       }
 
-      const validated = DiagnosisResponseSchema.safeParse(parsed)
-      if (!validated.success) {
-        return {
-          fallback: true,
-          errorCode: 'LLM_SCHEMA_VIOLATION',
-          traces: [
-            createTrace(caseId, NODE_ID, startTime, 'fallback_used', {
-              llmCalled: true,
-              llmModel: model,
-              errorCode: 'LLM_SCHEMA_VIOLATION',
-              dataLabel,
-              fallbackActivated: true,
-              tokensUsed: result.tokensUsed,
-              resultType: 'diagnosis_schema_error',
-            }),
-          ],
-        }
-      }
+      // The Zod contract is unchanged and still authoritative.
+      const validated = DiagnosisResponseSchema.safeParse(normalized.candidate)
+      if (!validated.success) return schemaFailure(describeZodIssues(validated.error))
+
+      // 6.4D (D-08..D-10): deterministic quality layer — removes internal labels, absences listed as
+      // facts and ungrounded facts; caps confidence. It only removes or downgrades, never adds.
+      const { output: refined } = refineDiagnosisOutput(validated.data, {
+        userText: state.userText ?? '',
+        vehicleLine: vehicleLineOf(state),
+      })
 
       return {
-        facts: validated.data.facts,
-        hypotheses: validated.data.hypotheses,
-        questions: validated.data.questions,
+        facts: refined.facts,
+        hypotheses: refined.hypotheses,
+        questions: refined.questions,
         traces: [
           createTrace(caseId, NODE_ID, startTime, 'success', {
             llmCalled: true,
             llmModel: model,
             dataLabel,
             tokensUsed: result.tokensUsed,
-            resultType: 'hypotheses_generated',
+            resultType: normalized.issues.length > 0 ? 'hypotheses_generated_after_normalization' : 'hypotheses_generated',
+            schemaIssues: normalized.issues,
           }),
         ],
       }

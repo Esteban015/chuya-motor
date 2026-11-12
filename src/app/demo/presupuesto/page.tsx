@@ -8,7 +8,7 @@ import type {
   ClientAnalyzeOutput,
   SafetyBlockPayload,
 } from '@/app/api/analyze/schema'
-import { DemoBadge } from '@/components/demo-badge'
+import { SiteModeBadge } from '@/components/ai-status-badge'
 import { PrivacyNotice } from '@/components/privacy-notice'
 import { SafetyAlert } from '@/components/safety-alert'
 import { ReportView } from '@/components/report-view'
@@ -243,7 +243,7 @@ export default function DemoPresupuestoPage() {
             </svg>
             <span>Demo</span>
           </Link>
-          <DemoBadge />
+          <SiteModeBadge />
         </div>
       </header>
 

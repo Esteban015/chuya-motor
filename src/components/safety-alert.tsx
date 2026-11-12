@@ -1,15 +1,36 @@
+import type { SeverityAssessmentResult } from '@/app/api/analyze/schema'
+
 interface SafetyAlertProps {
   message: string | null
   policyVersion: string
   coverageDisclaimer: string
+  /**
+   * 6.4B (D-02): deterministic server-side severity for the blocked query. Only a 'critical'
+   * level is rendered here (explicit "No conduzcas"); anything else keeps the generic alert.
+   */
+  severity?: SeverityAssessmentResult | null
 }
 
-export function SafetyAlert({ message, policyVersion, coverageDisclaimer }: SafetyAlertProps) {
+export function SafetyAlert({ message, policyVersion, coverageDisclaimer, severity }: SafetyAlertProps) {
+  const critical = severity?.level === 'critical' ? severity : null
+
   return (
     <div
       role="alert"
       className="rounded-xl border-2 border-red-300 bg-red-50 p-5 space-y-3"
     >
+      {critical && (
+        // Inside the single role="alert" container: announced together with the block.
+        <div
+          data-severity="critical"
+          className="rounded-lg border-2 border-red-500 bg-white px-4 py-3 space-y-1.5"
+        >
+          <h2 className="font-bold text-red-800 text-base leading-tight">{critical.title}</h2>
+          <p className="text-sm font-semibold text-red-800 leading-relaxed">{critical.action}</p>
+          <p className="text-sm text-red-700 leading-relaxed">{critical.message}</p>
+        </div>
+      )}
+
       <div className="flex items-start gap-3">
         <span
           aria-hidden="true"

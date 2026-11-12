@@ -826,8 +826,9 @@ describe('INT5C-02: confidence enum contract — Zod correctly rejects float (RC
       questions: ['¿Cuándo empezó?'],
     }
     const adapter = makeFixedAdapter(JSON.stringify(goodPayload), null)
+    // 6.4D (D-10): a short symptom caps confidence to "low"; a detailed one keeps "medium".
     const output = await analyzeCase(
-      makeInput({ userText: 'El motor hace un ruido extraño al arrancar.' }),
+      makeInput({ userText: 'El motor hace un ruido metálico extraño al arrancar en frío y desaparece a los pocos minutos.' }),
       { llmAdapter: adapter, documentSourcePort: docSource },
     )
     expect(output.fallback).toBe(false)

@@ -1,7 +1,7 @@
 'use client'
 
 import type { ClientAnalyzeOutput, ClientBudgetOutput } from '@/app/api/analyze/schema'
-import { DemoBadge } from '@/components/demo-badge'
+import { AiStatusBadge } from '@/components/ai-status-badge'
 import { FallbackAlert } from '@/components/fallback-alert'
 import { SeverityBanner } from '@/components/severity-banner'
 import { TraceViewer } from '@/components/trace-viewer'
@@ -52,14 +52,16 @@ function SectionHeading({ id, children }: { id: string; children: React.ReactNod
 export function ReportView({ report }: ReportViewProps) {
   return (
     <div className="space-y-5">
-      {/* Demo badge */}
-      <div className="flex justify-start">
-        <DemoBadge />
-      </div>
+      {/* 6.4E: badge from what actually processed this request (server-side aiStatus) */}
+      {report.aiStatus && report.aiStatus.mode !== 'none' && (
+        <div className="flex justify-start">
+          <AiStatusBadge status={report.aiStatus} />
+        </div>
+      )}
 
       {/* Fallback alert */}
       {report.fallback && (
-        <FallbackAlert fallbackText={report.fallbackText} />
+        <FallbackAlert fallbackText={report.fallbackText} aiStatus={report.aiStatus} />
       )}
 
       {/* Severity banner — before hypotheses */}
