@@ -217,7 +217,11 @@ test('E2E-F6-10: /demo/presupuesto full flow — "Usar ejemplo" → submit → C
   await page.click('button:has-text("Usar ejemplo")')
   await page.click('button[type="submit"]')
 
-  await expect(page.getByText('COMPLETE')).toBeVisible({ timeout: 15000 })
+  // 6.6: the redesigned /demo/presupuesto result shows the status in Spanish ("Completo") instead of
+  // the internal enum; the server value is still asserted through data-status (same semantics).
+  const status = page.locator('[data-testid="budget-totals"] [data-status]')
+  await expect(status).toHaveAttribute('data-status', 'COMPLETE', { timeout: 15000 })
+  await expect(status).toHaveText('Completo')
   await expect(page.getByText('MODO DEMO · RESPUESTAS SIMULADAS').first()).toBeVisible()
   await expect(page.getByText('Consulta bloqueada por seguridad')).not.toBeVisible()
 })

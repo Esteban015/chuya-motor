@@ -11,7 +11,8 @@ import type {
 import { SiteModeBadge } from '@/components/ai-status-badge'
 import { PrivacyNotice } from '@/components/privacy-notice'
 import { SafetyAlert } from '@/components/safety-alert'
-import { ReportView } from '@/components/report-view'
+import { BudgetReport } from '@/components/results/budget-report'
+import { RESULTS_CONTAINER } from '@/components/results/report-parts'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,16 @@ const INITIAL_FORM: FormValues = {
   model: '',
   year: '',
   vehicleType: '',
+}
+
+const VEHICLE_TYPE_LABEL: Record<VehicleType, string> = {
+  sedan: 'Automóvil (sedan)',
+  hatchback: 'Hatchback',
+  suv: 'SUV / Camioneta 4x4',
+  pickup: 'Pick-up',
+  van: 'Furgoneta / Van',
+  motorcycle: 'Moto',
+  other: 'Otro',
 }
 
 const DEMO_BUDGET = `Aceite motor: 4500
@@ -220,6 +231,8 @@ export default function DemoPresupuestoPage() {
   }
 
   const isLoading = pageState.kind === 'loading'
+  // 6.6: the result takes the full width (no tips panel, no repeated mode badge).
+  const isResult = pageState.kind === 'success'
 
   const inputCls =
     'w-full rounded-xl border border-brand-border bg-white px-3 py-2.5 text-sm text-brand-text placeholder-brand-text-light focus:border-brand-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:opacity-50 transition-colors'
@@ -232,7 +245,7 @@ export default function DemoPresupuestoPage() {
 
       {/* Header */}
       <header className="bg-white border-b border-brand-border-light px-6">
-        <div className="max-w-6xl mx-auto h-14 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto h-14 flex items-center justify-between gap-4">
           <Link
             href="/demo"
             className="flex items-center gap-1.5 text-sm text-brand-text-muted hover:text-brand-primary transition-colors"
@@ -243,10 +256,27 @@ export default function DemoPresupuestoPage() {
             </svg>
             <span>Demo</span>
           </Link>
-          <SiteModeBadge />
+          {!isResult && <SiteModeBadge />}
         </div>
       </header>
 
+      {isResult && (
+        <div className={`${RESULTS_CONTAINER} pt-6 pb-16 sm:pt-8 animate-fade-in`}>
+          <BudgetReport
+            report={pageState.report}
+            declared={{
+              budgetText: form.budgetText.trim(),
+              vehicleType: form.vehicleType ? VEHICLE_TYPE_LABEL[form.vehicleType] : undefined,
+              make: form.make.trim() || undefined,
+              model: form.model.trim() || undefined,
+              year: form.year || undefined,
+            }}
+            onNewQuery={resetAll}
+          />
+        </div>
+      )}
+
+      {!isResult && (<>
       {/* Page title */}
       <div className="max-w-6xl mx-auto px-4 pt-8 pb-4">
         <h1 className="text-2xl font-extrabold text-brand-text font-display">Entender mi presupuesto</h1>
@@ -285,6 +315,7 @@ export default function DemoPresupuestoPage() {
                   message={pageState.payload.safetyDerivationMessage}
                   policyVersion={pageState.payload.policyVersion}
                   coverageDisclaimer={pageState.payload.coverageDisclaimer}
+                  severity={pageState.payload.severity ?? null}
                 />
                 <button type="button" onClick={resetAll} className="rounded-xl border border-brand-border bg-white px-4 py-2.5 text-sm font-medium text-brand-text hover:bg-brand-bg transition-colors">
                   Volver a intentar
@@ -408,25 +439,6 @@ export default function DemoPresupuestoPage() {
               </div>
             )}
 
-            {/* Success */}
-            {pageState.kind === 'success' && (
-              <div className="space-y-6">
-                <ReportView report={pageState.report} />
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <button
-                    type="button"
-                    onClick={resetAll}
-                    className="rounded-xl border border-brand-border bg-white px-4 py-2.5 text-sm font-medium text-brand-text hover:bg-brand-bg transition-colors"
-                  >
-                    Nueva consulta
-                  </button>
-                  <Link href="/demo" className="rounded-xl border border-brand-border bg-white px-4 py-2.5 text-sm font-medium text-brand-text hover:bg-brand-bg transition-colors text-center">
-                    Volver al demo
-                  </Link>
-                </div>
-              </div>
-            )}
-
           </div>
 
           {/* Right — tips (always visible) */}
@@ -438,6 +450,7 @@ export default function DemoPresupuestoPage() {
 
         </div>
       </div>
+      </>)}
     </main>
   )
 }

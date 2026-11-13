@@ -12,7 +12,8 @@ import { StepIndicator } from '@/components/step-indicator'
 import { SiteModeBadge } from '@/components/ai-status-badge'
 import { PrivacyNotice } from '@/components/privacy-notice'
 import { SafetyAlert } from '@/components/safety-alert'
-import { ReportView } from '@/components/report-view'
+import { SymptomReport } from '@/components/results/symptom-report'
+import { RESULTS_CONTAINER } from '@/components/results/report-parts'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +52,25 @@ const INITIAL_FORM: FormValues = {
 }
 
 const WIZARD_STEPS = ['Mi vehículo', 'El síntoma', 'Resultado'] as const
+
+const VEHICLE_TYPE_LABEL: Record<VehicleType, string> = {
+  sedan: 'Automóvil (sedan)',
+  hatchback: 'Hatchback',
+  suv: 'SUV / Camioneta 4x4',
+  pickup: 'Pick-up',
+  van: 'Furgoneta / Van',
+  motorcycle: 'Moto',
+  other: 'Otro',
+}
+
+const FUEL_LABEL: Record<FuelType, string> = {
+  gasoline: 'Nafta',
+  diesel: 'Diésel',
+  gnc: 'GNC',
+  hybrid: 'Híbrido',
+  electric: 'Eléctrico',
+  other: 'Otro',
+}
 
 const SYMPTOM_EXAMPLES = [
   'El motor hace un ruido extraño al arrancar en frío.',
@@ -176,12 +196,16 @@ export default function DemoFallaPage() {
   const indicatorStep: 1 | 2 | 3 =
     pageState.kind === 'form' ? pageState.step : 3
 
+  // 6.6: the result uses the wide layout; the wizard keeps a comfortable narrow column.
+  const isResult = pageState.kind === 'success'
+  const container = isResult ? `${RESULTS_CONTAINER} pt-6 pb-16 sm:pt-8` : 'max-w-2xl mx-auto px-4 pt-8 pb-16 space-y-6'
+
   return (
     <main className="min-h-screen bg-brand-bg">
 
       {/* Header */}
       <header className="bg-white border-b border-brand-border-light px-6">
-        <div className="max-w-2xl mx-auto h-14 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto h-14 flex items-center justify-between gap-4">
           <Link
             href="/demo"
             className="flex items-center gap-1.5 text-sm text-brand-text-muted hover:text-brand-primary transition-colors"
@@ -192,15 +216,16 @@ export default function DemoFallaPage() {
             </svg>
             <span>Demo</span>
           </Link>
-          <SiteModeBadge />
+          {/* The result shows the badge of the provider that really answered: not repeated here. */}
+          {!isResult && <SiteModeBadge />}
         </div>
       </header>
 
-      {/* Wizard container */}
-      <div className="max-w-2xl mx-auto px-4 pt-8 pb-16 space-y-6">
+      {/* Wizard / result container */}
+      <div className={container}>
 
         {/* Step indicator */}
-        {(pageState.kind === 'form' || pageState.kind === 'loading' || pageState.kind === 'success') && (
+        {(pageState.kind === 'form' || pageState.kind === 'loading') && (
           <div className="bg-white rounded-2xl border border-brand-border-light px-6 py-4">
             <StepIndicator current={indicatorStep} steps={WIZARD_STEPS} />
           </div>
@@ -471,20 +496,20 @@ export default function DemoFallaPage() {
 
         {/* ── Success ───────────────────────────────────────────────────── */}
         {pageState.kind === 'success' && (
-          <div className="space-y-6 animate-fade-in">
-            <ReportView report={pageState.report} />
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                type="button"
-                onClick={resetAll}
-                className="rounded-xl border border-brand-border bg-white px-4 py-2.5 text-sm font-medium text-brand-text hover:bg-brand-bg transition-colors"
-              >
-                Nueva consulta
-              </button>
-              <Link href="/demo" className="rounded-xl border border-brand-border bg-white px-4 py-2.5 text-sm font-medium text-brand-text hover:bg-brand-bg transition-colors text-center">
-                Volver al demo
-              </Link>
-            </div>
+          <div className="animate-fade-in">
+            <SymptomReport
+              report={pageState.report}
+              declared={{
+                vehicleType: form.vehicleType ? VEHICLE_TYPE_LABEL[form.vehicleType] : undefined,
+                make: form.make.trim() || undefined,
+                model: form.model.trim() || undefined,
+                year: form.year || undefined,
+                fuelType: form.fuelType ? FUEL_LABEL[form.fuelType] : undefined,
+                symptomText: form.symptomText.trim(),
+                occurrence: form.occurrence || undefined,
+              }}
+              onNewQuery={resetAll}
+            />
           </div>
         )}
 
