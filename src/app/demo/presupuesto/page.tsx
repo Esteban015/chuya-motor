@@ -13,6 +13,7 @@ import { PrivacyNotice } from '@/components/privacy-notice'
 import { SafetyAlert } from '@/components/safety-alert'
 import { BudgetReport } from '@/components/results/budget-report'
 import { RESULTS_CONTAINER } from '@/components/results/report-parts'
+import { FORM_CONTAINER, FORM_GRID } from '@/components/forms/form-context-panels'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ function TipsPanel() {
   ]
 
   return (
-    <aside className="space-y-5">
+    <aside className="space-y-5" aria-label="Ayuda: análisis del presupuesto">
       <div>
         <h2 className="text-base font-bold text-brand-text font-display">¿Qué hace el análisis?</h2>
         <p className="mt-1 text-sm text-brand-text-muted leading-relaxed">
@@ -244,8 +245,9 @@ export default function DemoPresupuestoPage() {
     <main className="min-h-screen bg-brand-bg">
 
       {/* Header */}
-      <header className="bg-white border-b border-brand-border-light px-6">
-        <div className="max-w-7xl mx-auto h-14 flex items-center justify-between gap-4">
+      <header className="bg-white border-b border-brand-border-light">
+        {/* 6.7: header content aligned with the container below (results 7xl, forms 6xl). */}
+        <div className={`${isResult ? RESULTS_CONTAINER : FORM_CONTAINER} h-14 flex items-center justify-between gap-4`}>
           <Link
             href="/demo"
             className="flex items-center gap-1.5 text-sm text-brand-text-muted hover:text-brand-primary transition-colors"
@@ -278,7 +280,7 @@ export default function DemoPresupuestoPage() {
 
       {!isResult && (<>
       {/* Page title */}
-      <div className="max-w-6xl mx-auto px-4 pt-8 pb-4">
+      <div className={`${FORM_CONTAINER} pt-6 pb-4 sm:pt-8`}>
         <h1 className="text-2xl font-extrabold text-brand-text font-display">Entender mi presupuesto</h1>
         <p className="mt-1 text-sm text-brand-text-muted leading-relaxed">
           Pegá las partidas del presupuesto para verificar la suma y obtener las preguntas correctas para el taller.
@@ -286,11 +288,12 @@ export default function DemoPresupuestoPage() {
       </div>
 
       {/* 2-col layout */}
-      <div className="max-w-6xl mx-auto px-4 pb-16">
-        <div className="grid lg:grid-cols-[1fr_320px] gap-8 items-start">
+      <div className={`${FORM_CONTAINER} pb-16`}>
+        {/* 6.7: form ≈ 67 % / help ≈ 33 % on desktop; help below the form on mobile (was hidden). */}
+        <div className={FORM_GRID}>
 
           {/* Left — form + result */}
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
 
             {/* Rate limit */}
             {pageState.kind === 'rate_limit' && (
@@ -325,7 +328,7 @@ export default function DemoPresupuestoPage() {
 
             {/* Form */}
             {(pageState.kind === 'form' || pageState.kind === 'loading') && (
-              <form onSubmit={handleSubmit} noValidate className="bg-white rounded-2xl border border-brand-border-light overflow-hidden">
+              <form onSubmit={handleSubmit} noValidate className="bg-white rounded-2xl border border-brand-border-light overflow-hidden shadow-brand-xs">
                 <div className="px-6 pt-6 pb-4 border-b border-brand-border-light">
                   <div className="flex items-center justify-between">
                     <label htmlFor="budgetText" className="text-sm font-medium text-brand-text">
@@ -441,9 +444,9 @@ export default function DemoPresupuestoPage() {
 
           </div>
 
-          {/* Right — tips (always visible) */}
-          <div className="hidden lg:block">
-            <div className="sticky top-6 bg-white rounded-2xl border border-brand-border-light p-6">
+          {/* Right — tips: below the form on mobile, sticky only on desktop (never covers content). */}
+          <div className="min-w-0" data-testid="form-context">
+            <div className="lg:sticky lg:top-6 bg-white rounded-2xl border border-brand-border-light p-6 shadow-brand-xs">
               <TipsPanel />
             </div>
           </div>
