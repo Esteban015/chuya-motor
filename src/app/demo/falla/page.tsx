@@ -14,6 +14,7 @@ import { PrivacyNotice } from '@/components/privacy-notice'
 import { SafetyAlert } from '@/components/safety-alert'
 import { SymptomReport } from '@/components/results/symptom-report'
 import { RESULTS_CONTAINER } from '@/components/results/report-parts'
+import { FORM_CONTAINER, FORM_GRID, SymptomStepPanel, VehicleStepPanel } from '@/components/forms/form-context-panels'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,16 +197,22 @@ export default function DemoFallaPage() {
   const indicatorStep: 1 | 2 | 3 =
     pageState.kind === 'form' ? pageState.step : 3
 
-  // 6.6: the result uses the wide layout; the wizard keeps a comfortable narrow column.
+  // 6.6: wide result layout. 6.7: wide wizard (form + context column); notices stay readable-width.
   const isResult = pageState.kind === 'success'
-  const container = isResult ? `${RESULTS_CONTAINER} pt-6 pb-16 sm:pt-8` : 'max-w-2xl mx-auto px-4 pt-8 pb-16 space-y-6'
+  const isWizard = pageState.kind === 'form' || pageState.kind === 'loading'
+  const container = isResult
+    ? `${RESULTS_CONTAINER} pt-6 pb-16 sm:pt-8`
+    : isWizard
+      ? `${FORM_CONTAINER} pt-6 pb-16 sm:pt-8 space-y-6`
+      : 'max-w-3xl mx-auto px-4 pt-8 pb-16 space-y-6'
 
   return (
     <main className="min-h-screen bg-brand-bg">
 
       {/* Header */}
-      <header className="bg-white border-b border-brand-border-light px-6">
-        <div className="max-w-7xl mx-auto h-14 flex items-center justify-between gap-4">
+      <header className="bg-white border-b border-brand-border-light">
+        {/* 6.7: header content aligned with the container below (results 7xl, forms 6xl). */}
+        <div className={`${isResult ? RESULTS_CONTAINER : FORM_CONTAINER} h-14 flex items-center justify-between gap-4`}>
           <Link
             href="/demo"
             className="flex items-center gap-1.5 text-sm text-brand-text-muted hover:text-brand-primary transition-colors"
@@ -233,7 +240,8 @@ export default function DemoFallaPage() {
 
         {/* ── Step 1: Mi vehículo ───────────────────────────────────────── */}
         {pageState.kind === 'form' && pageState.step === 1 && (
-          <div className="bg-white rounded-2xl border border-brand-border-light overflow-hidden animate-fade-in">
+          <div className={`${FORM_GRID} animate-fade-in`}>
+          <div className="min-w-0 bg-white rounded-2xl border border-brand-border-light overflow-hidden shadow-brand-xs">
             <div className="px-6 pt-6 pb-4 border-b border-brand-border-light">
               <h1 className="text-xl font-extrabold text-brand-text font-display">Mi vehículo</h1>
               <p className="mt-1 text-sm text-brand-text-muted">
@@ -322,11 +330,22 @@ export default function DemoFallaPage() {
               </div>
             </div>
           </div>
+          <VehicleStepPanel
+            values={{
+              vehicleType: form.vehicleType ? VEHICLE_TYPE_LABEL[form.vehicleType] : undefined,
+              make: form.make.trim() || undefined,
+              model: form.model.trim() || undefined,
+              year: form.year || undefined,
+              fuelType: form.fuelType ? FUEL_LABEL[form.fuelType] : undefined,
+            }}
+          />
+          </div>
         )}
 
         {/* ── Step 2: El síntoma ─────────────────────────────────────────── */}
         {pageState.kind === 'form' && pageState.step === 2 && (
-          <form onSubmit={handleSubmit} noValidate className="bg-white rounded-2xl border border-brand-border-light overflow-hidden animate-fade-in">
+          <div className={`${FORM_GRID} animate-fade-in`}>
+          <form onSubmit={handleSubmit} noValidate className="min-w-0 bg-white rounded-2xl border border-brand-border-light overflow-hidden shadow-brand-xs">
             <div className="px-6 pt-6 pb-4 border-b border-brand-border-light">
               <h1 className="text-xl font-extrabold text-brand-text font-display">El síntoma</h1>
               <p className="mt-1 text-sm text-brand-text-muted">
@@ -429,7 +448,10 @@ export default function DemoFallaPage() {
                 </select>
               </div>
 
-              <PrivacyNotice />
+              {/* Mobile / tablet: privacy notice before the button. Desktop: in the context column. */}
+              <div className="lg:hidden">
+                <PrivacyNotice />
+              </div>
 
               <div className="flex gap-3 pt-2">
                 <button
@@ -448,11 +470,13 @@ export default function DemoFallaPage() {
               </div>
             </div>
           </form>
+          <SymptomStepPanel />
+          </div>
         )}
 
         {/* ── Loading ────────────────────────────────────────────────────── */}
         {pageState.kind === 'loading' && (
-          <div className="bg-white rounded-2xl border border-brand-border-light px-6 py-10 space-y-4">
+          <div className="bg-white rounded-2xl border border-brand-border-light px-6 py-10 space-y-4 lg:w-2/3">
             <div aria-live="polite" aria-label="Analizando síntoma" className="space-y-3 animate-pulse">
               <div className="h-4 bg-brand-bg-alt rounded-lg w-3/4" />
               <div className="h-4 bg-brand-bg-alt rounded-lg w-1/2" />

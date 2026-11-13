@@ -14,7 +14,8 @@ export function StepIndicator({ current, steps }: StepIndicatorProps) {
           const isLast = n === 3
 
           return (
-            <li key={n} className="flex items-center flex-1">
+            // 6.7: only steps followed by a connector grow, so the last step ends at the container edge.
+            <li key={n} className={isLast ? 'flex items-center flex-none' : 'flex items-center flex-1'}>
               <div className="flex flex-col items-center gap-1.5 flex-shrink-0">
                 <div
                   aria-current={isCurrent ? 'step' : undefined}
@@ -47,7 +48,7 @@ export function StepIndicator({ current, steps }: StepIndicatorProps) {
                 </div>
                 <span
                   className={[
-                    'text-2xs font-medium whitespace-nowrap hidden sm:block',
+                    'text-xs font-medium whitespace-nowrap hidden sm:block',
                     isCurrent ? 'text-brand-primary' : isCompleted ? 'text-brand-text-muted' : 'text-brand-text-light',
                   ].join(' ')}
                   aria-hidden="true"
