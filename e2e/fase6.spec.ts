@@ -225,3 +225,46 @@ test('E2E-F6-10: /demo/presupuesto full flow — "Usar ejemplo" → submit → C
   await expect(page.getByText('MODO DEMO · RESPUESTAS SIMULADAS').first()).toBeVisible()
   await expect(page.getByText('Consulta bloqueada por seguridad')).not.toBeVisible()
 })
+
+// ── E2E-F6-12 (hotfix): distinct CTA labels on /demo, destinations, keyboard, no overflow ──
+
+test('E2E-F6-12: /demo CTAs say "Analizar mi falla" / "Revisar presupuesto" and keep their destinations', async ({ page }) => {
+  await page.goto('/demo')
+  const falla = page.getByRole('link', { name: 'Tengo una falla: Analizar mi falla' })
+  const presupuesto = page.getByRole('link', { name: 'Entender mi presupuesto: Revisar presupuesto' })
+  await expect(falla).toHaveAttribute('href', '/demo/falla')
+  await expect(presupuesto).toHaveAttribute('href', '/demo/presupuesto')
+  await expect(page.getByTestId('cta-falla')).toHaveText('Analizar mi falla →')
+  await expect(page.getByTestId('cta-presupuesto')).toHaveText('Revisar presupuesto →')
+  await expect(page.getByText('Empezar')).toHaveCount(0)
+
+  // Keyboard: both cards are reachable with Tab and open with Enter.
+  await falla.focus()
+  await expect(falla).toBeFocused()
+  await page.keyboard.press('Tab')
+  await expect(presupuesto).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/demo\/presupuesto$/)
+  await page.goto('/demo')
+  await page.getByRole('link', { name: 'Tengo una falla: Analizar mi falla' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/demo\/falla$/)
+})
+
+for (const width of [390, 320]) {
+  test(`E2E-F6-12-${width}: /demo CTA labels fit at ${width}px (no overflow, single-line buttons)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 })
+    await page.goto('/demo')
+    const { scroll, client } = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }))
+    expect(scroll).toBeLessThanOrEqual(client)
+    for (const id of ['cta-falla', 'cta-presupuesto']) {
+      const cta = page.getByTestId(id)
+      const box = (await cta.boundingBox())!
+      const card = (await cta.locator('xpath=ancestor::a').boundingBox())!
+      expect(box.x + box.width).toBeLessThanOrEqual(card.x + card.width) // inside its card
+      const lineHeight = await cta.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight))
+      expect(box.height).toBeLessThan(lineHeight * 2 + 16) // one line of text (+ vertical padding)
+    }
+    await page.screenshot({ path: `reviews-local/screenshots/hotfix-cta/demo-${width}.png`, fullPage: true, animations: 'disabled' })
+  })
+}

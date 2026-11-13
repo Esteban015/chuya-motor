@@ -107,6 +107,8 @@ export default function DemoPage() {
           {/* Falla */}
           <Link
             href="/demo/falla"
+            aria-label="Tengo una falla: Analizar mi falla"
+            aria-describedby="demo-falla-desc"
             className="group relative flex flex-col rounded-3xl border border-white/15 bg-white/[8%] hover:bg-white/[14%] transition-all focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-primary overflow-hidden"
           >
             {/* Top accent */}
@@ -128,19 +130,19 @@ export default function DemoPage() {
                 <h2 className="font-extrabold text-white font-display text-xl leading-snug group-hover:text-brand-accent transition-colors">
                   Tengo una falla
                 </h2>
-                <p className="text-sm text-white/60 leading-relaxed">
+                <p id="demo-falla-desc" className="text-sm text-white/60 leading-relaxed">
                   Describí qué siente el auto — un ruido, una vibración, una luz encendida. Recibís hipótesis orientativas y las preguntas exactas para el mecánico.
                 </p>
               </div>
 
               {/* CTA row */}
-              <div className="flex items-center justify-between pt-2 border-t border-white/10">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/10">
                 <div className="space-y-0.5">
                   <p className="text-2xs text-white/40 uppercase tracking-wider">Proceso guiado</p>
                   <p className="text-xs text-white/60">3 pasos · 2 minutos</p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-xl bg-brand-accent px-4 py-2 text-sm font-bold text-brand-primary group-hover:bg-brand-accent-mid transition-colors" aria-hidden="true">
-                  Empezar →
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-brand-accent px-4 py-2 text-sm font-bold text-brand-primary group-hover:bg-brand-accent-mid transition-colors" aria-hidden="true" data-testid="cta-falla">
+                  Analizar mi falla →
                 </span>
               </div>
             </div>
@@ -149,6 +151,8 @@ export default function DemoPage() {
           {/* Presupuesto */}
           <Link
             href="/demo/presupuesto"
+            aria-label="Entender mi presupuesto: Revisar presupuesto"
+            aria-describedby="demo-presupuesto-desc"
             className="group relative flex flex-col rounded-3xl border border-white/15 bg-white/[8%] hover:bg-white/[14%] overflow-hidden transition-all focus-visible:ring-2 focus-visible:ring-brand-accent focus-visible:ring-offset-2 focus-visible:ring-offset-brand-primary"
           >
             <div className="h-1 w-full bg-brand-coral rounded-t-3xl" aria-hidden="true" />
@@ -167,18 +171,18 @@ export default function DemoPage() {
                 <h2 className="font-extrabold text-white font-display text-xl leading-snug group-hover:text-brand-accent transition-colors">
                   Entender mi presupuesto
                 </h2>
-                <p className="text-sm text-white/60 leading-relaxed">
+                <p id="demo-presupuesto-desc" className="text-sm text-white/60 leading-relaxed">
                   Pegás las partidas del presupuesto del taller. Verificamos la suma, detectamos inconsistencias y preparamos las preguntas que necesitás hacer.
                 </p>
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-white/10">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/10">
                 <div className="space-y-0.5">
                   <p className="text-2xs text-white/40 uppercase tracking-wider">Análisis inmediato</p>
                   <p className="text-xs text-white/60">Verificación de sumas</p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-xl bg-white/15 px-4 py-2 text-sm font-bold text-white group-hover:bg-brand-accent group-hover:text-brand-primary transition-colors" aria-hidden="true">
-                  Empezar →
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-white/15 px-4 py-2 text-sm font-bold text-white group-hover:bg-brand-accent group-hover:text-brand-primary transition-colors" aria-hidden="true" data-testid="cta-presupuesto">
+                  Revisar presupuesto →
                 </span>
               </div>
             </div>
