@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import type { CSSProperties } from 'react'
-import Script from 'next/script'
+import { SiteAnalytics } from '@/components/site-analytics'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -27,8 +27,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="font-sans bg-brand-bg text-brand-text antialiased">
         {children}
-        {/* Analytics de visitas de Vercel. No se envían datos de formularios ni consultas. */}
-        <Script src="/_vercel/insights/script.js" strategy="afterInteractive" />
+        {/* 7A: Vercel Web Analytics, solo páginas vistas. Sin eventos propios ni datos de formularios. */}
+        <SiteAnalytics />
       </body>
     </html>
   )

@@ -13,6 +13,7 @@
  */
 import type { ClientAnalyzeOutput, ClientBudgetOutput } from '@/app/api/analyze/schema'
 import { FallbackAlert } from '@/components/fallback-alert'
+import { FeedbackInvite } from '@/components/feedback/feedback-invite'
 import { SeverityBanner } from '@/components/severity-banner'
 import { TraceViewer } from '@/components/trace-viewer'
 import { BUDGET_STATUS_LABEL, budgetComparison, formatMoney } from './format'
@@ -182,6 +183,9 @@ export function BudgetReport({
       <ReportActions onNewQuery={onNewQuery} newQueryLabel="Analizar otro presupuesto" />
 
       <p className="border-t border-brand-border-light pt-4 text-xs italic leading-relaxed text-brand-text-light">{report.coverageDisclaimer}</p>
+
+      {/* 7A: optional feedback, always last — never above safety or the result itself. */}
+      <FeedbackInvite />
 
       {report.nodeTrace !== null && <TraceViewer traces={report.nodeTrace} />}
     </div>

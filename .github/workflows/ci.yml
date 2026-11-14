@@ -50,6 +50,9 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # 7A: test-only value (inlined at build time) so E2E can assert the feedback CTA.
+          NEXT_PUBLIC_FEEDBACK_FORM_URL: https://docs.google.com/forms/d/e/E2E-TEST-ONLY/viewform
 
       - name: Tests E2E
         run: npm run test:e2e
