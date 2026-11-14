@@ -84,7 +84,13 @@ export interface ClientAnalyzeOutput {
   route: 'symptom' | 'budget' | 'clarification' | null
   facts: string[]
   hypotheses: ClientHypothesis[]
+  /** Questions the person can ask the workshop (mechanic-directed). */
   questions: string[]
+  /**
+   * Bugfix 7B — additive field: clarifying questions for the driver, to prepare the consultation.
+   * Optional in the type so clients tolerate servers that predate it.
+   */
+  driverQuestions?: string[]
   warnings: string[]
   budget: ClientBudgetOutput | null
   missingInformation: string[]

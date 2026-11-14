@@ -43,7 +43,10 @@ export const AnalyzeOutputSchema = z.object({
   route: z.enum(['symptom', 'budget', 'clarification']).nullable(),
   facts: z.array(z.string().max(500)),
   hypotheses: z.array(HypothesisSchema),
+  /** Questions the person can ask the workshop (mechanic-directed). */
   questions: z.array(z.string().max(300)),
+  /** Bugfix 7B — additive: clarifying questions for the driver (to prepare the consultation). */
+  driverQuestions: z.array(z.string().max(300)).optional(),
   warnings: z.array(z.string().max(300)),
   budget: BudgetOutputSchema.nullable(),
   missingInformation: z.array(z.string().max(300)),

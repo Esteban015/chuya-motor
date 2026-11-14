@@ -43,6 +43,7 @@ export async function outputSafetyGuardNode(state: GraphState): Promise<Partial<
     facts: [],
     hypotheses: [],
     questions: [],
+    driverQuestions: [],
     fallback: true,
     errorCode,
     warnings: withheldWarnings(violations),
@@ -59,7 +60,7 @@ export async function outputSafetyGuardNode(state: GraphState): Promise<Partial<
   try {
     const severity = resolveUserFacingSeverity({ userText: state.userText, safetyBlocked: false, route: state.route })
     const result = validateDiagnosisOutput(
-      { facts: state.facts, hypotheses: state.hypotheses, questions: state.questions },
+      { facts: state.facts, hypotheses: state.hypotheses, questions: state.questions, driverQuestions: state.driverQuestions },
       { severityLevel: severity?.level ?? 'normal' },
     )
     if (!result.safe) return withhold('LLM_OUTPUT_UNSAFE', result.violations)

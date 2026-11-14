@@ -53,7 +53,13 @@ export const GraphStateAnnotation = Annotation.Root({
     reducer: (_prev, next) => next,
     default: () => [],
   }),
+  /** Mechanic-directed questions (shown as "Preguntas para el taller"). */
   questions: Annotation<string[]>({
+    reducer: (_prev, next) => next,
+    default: () => [],
+  }),
+  /** Bugfix 7B: clarifying questions for the driver. */
+  driverQuestions: Annotation<string[]>({
     reducer: (_prev, next) => next,
     default: () => [],
   }),

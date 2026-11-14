@@ -18,12 +18,12 @@ import { TraceViewer } from '@/components/trace-viewer'
 import {
   BulletList,
   ConfidenceIndicator,
-  CopyQuestionsButton,
-  QuestionList,
+  DriverQuestionsCard,
   ReportActions,
   ReportHeader,
   SectionCard,
   WarningsList,
+  WorkshopQuestionsCard,
 } from './report-parts'
 
 export interface DeclaredSymptomInput {
@@ -156,14 +156,9 @@ export function SymptomReport({
             </SectionCard>
           )}
 
-          {report.questions.length > 0 && (
-            <SectionCard id="questions-heading" title="Preguntas para el taller">
-              <QuestionList questions={report.questions} />
-              <div className="mt-4 border-t border-brand-border-light pt-3">
-                <CopyQuestionsButton questions={report.questions} />
-              </div>
-            </SectionCard>
-          )}
+          {/* Bugfix 7B: questions for the driver and for the workshop are never mixed. */}
+          <DriverQuestionsCard questions={report.driverQuestions ?? []} />
+          <WorkshopQuestionsCard questions={report.questions} />
         </aside>
       </div>
 

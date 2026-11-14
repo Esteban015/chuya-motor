@@ -34,7 +34,10 @@ type Confidence = 'low' | 'medium' | 'high'
 export interface NormalizedDiagnosis {
   facts: string[]
   hypotheses: Array<{ statement: string; confidence: Confidence; caveats: string[]; evidenceIds: string[] }>
+  /** Mechanic-directed questions ("workshopQuestions" in prompt v2.2.0; legacy "questions"). */
   questions: string[]
+  /** Bugfix 7B: clarifying questions for the driver ("driverQuestions"). */
+  driverQuestions: string[]
 }
 
 export type NormalizationResult =
@@ -126,7 +129,13 @@ export function normalizeDiagnosisCandidate(raw: unknown): NormalizationResult {
 
   const L = DIAGNOSIS_LIMITS
   const facts = stringList(raw['facts'], 'facts', L.facts, L.factChars, c).items
-  const questions = stringList(raw['questions'], 'questions', L.questions, L.questionChars, c).items
+  // Prompt v2.2.0 (bugfix 7B) asks for two lists. A legacy single "questions" list is still accepted;
+  // its items are re-classified by audience afterwards (question-audience.ts), never trusted as-is.
+  const twoLists = raw['workshopQuestions'] !== undefined || raw['driverQuestions'] !== undefined
+  const questions = twoLists
+    ? stringList(raw['workshopQuestions'], 'workshopQuestions', L.questions, L.questionChars, c).items
+    : stringList(raw['questions'], 'questions', L.questions, L.questionChars, c).items
+  const driverQuestions = twoLists ? stringList(raw['driverQuestions'], 'driverQuestions', L.questions, L.questionChars, c).items : []
 
   const rawHyps = raw['hypotheses']
   if (!Array.isArray(rawHyps)) {
@@ -195,7 +204,7 @@ export function normalizeDiagnosisCandidate(raw: unknown): NormalizationResult {
     return { ok: false, issues: c.list(), droppedTexts: c.dropped }
   }
 
-  return { ok: true, candidate: { facts, hypotheses: kept, questions }, issues: c.list(), droppedTexts: c.dropped }
+  return { ok: true, candidate: { facts, hypotheses: kept, questions, driverQuestions }, issues: c.list(), droppedTexts: c.dropped }
 }
 
 /** Structural description of a Zod failure: "<path pattern>:<code>", no values or messages. */

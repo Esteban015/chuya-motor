@@ -21,8 +21,8 @@ const state = (userText: string, experienceLevel: 'novice' | 'intermediate' | 'e
 })
 
 describe('DP-01: prompt rules (D-08..D-11 + safety)', () => {
-  it('version 2.1.0 and mock-routing marker first', () => {
-    expect(DIAGNOSIS_PROMPT_VERSION).toBe('2.1.0')
+  it('version 2.2.0 and mock-routing marker first', () => {
+    expect(DIAGNOSIS_PROMPT_VERSION).toBe('2.2.0')
     expect(DIAGNOSIS_SYSTEM_PROMPT.startsWith('[DIAGNOSIS_REQUEST]')).toBe(true)
   })
 
@@ -30,12 +30,12 @@ describe('DP-01: prompt rules (D-08..D-11 + safety)', () => {
     ['D-08 only declared facts', /SOLO lo que la persona declaró explícitamente/],
     ['D-08 no invented conditions', /No agregues condiciones que no dijo/],
     ['D-11 no absences as facts', /no listes ausencias como hechos/],
-    ['missing data → questions', /Lo que falte, pedilo en "questions"/],
+    ['missing data → driverQuestions (bugfix 7B)', /Lo que falte, pedilo en "driverQuestions"/],
     ['D-10 low by default, no high', /usá "low" por defecto[\s\S]*No uses "high"/],
     ['D-10 insufficient info → low', /información es insuficiente, todas las hipótesis van con "low"/],
     ['D-11 Argentine Spanish, voseo, no usted', /español claro y natural de Argentina[\s\S]*"vos"[\s\S]*Nunca uses "usted"/],
     ['D-09 no internal labels', /No incluyas datos internos de la solicitud ni etiquetas del sistema/],
-    ['concrete workshop questions', /preguntas concretas y útiles para el taller/],
+    ['workshop questions addressed to the mechanic (bugfix 7B)', /"workshopQuestions": preguntas que la persona le puede hacer al mecánico/],
     ['no dangerous repair instructions', /Nunca des instrucciones de reparación, desarme, ajuste o manipulación/],
     ['never encourage driving under risk', /Nunca sugieras seguir conduciendo/],
     ['not a definitive diagnosis', /No es un diagnóstico definitivo/],

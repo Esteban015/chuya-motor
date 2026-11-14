@@ -2,6 +2,7 @@ import { SAFETY_POLICY_VERSION, COVERAGE_DISCLAIMER, FALLBACK_TEXT } from '@/dom
 import type { GraphState } from '../graph-state'
 import type { AnalyzeOutput, BudgetOutput } from '../types'
 import { createTrace } from '../trace'
+import { buildBudgetWorkshopQuestions } from '@/domain/questions/question-audience'
 
 const NODE_ID = 'reportBuilder'
 
@@ -44,6 +45,16 @@ export async function reportBuilderNode(state: GraphState): Promise<Partial<Grap
     const policyVersion = state.safety?.policyVersion ?? SAFETY_POLICY_VERSION
     const coverageDisclaimer = state.safety?.coverageDisclaimer ?? COVERAGE_DISCLAIMER
 
+    const budget = buildBudgetOutput(state)
+    const blocked = state.safety?.blocked ?? false
+    // Bugfix 7B: the budget route never had questions; it now gets fixed, mechanic-directed ones
+    // computed from the server-side totals (no LLM). Symptom questions come from diagnosisAgent.
+    const questions = blocked
+      ? []
+      : state.route === 'budget' && budget && !state.fallback
+        ? buildBudgetWorkshopQuestions(budget)
+        : state.questions
+
     const output: AnalyzeOutput = {
       caseId,
       safetyBlocked: state.safety?.blocked ?? false,
@@ -53,9 +64,10 @@ export async function reportBuilderNode(state: GraphState): Promise<Partial<Grap
       route: state.safety?.blocked ? null : (state.route ?? null),
       facts: state.safety?.blocked ? [] : state.facts,
       hypotheses: state.safety?.blocked ? [] : state.hypotheses,
-      questions: state.safety?.blocked ? [] : state.questions,
+      questions,
+      driverQuestions: blocked ? [] : state.driverQuestions,
       warnings: state.warnings,
-      budget: buildBudgetOutput(state),
+      budget,
       missingInformation: state.missingInformation,
       fallback: state.fallback,
       fallbackText: state.fallback ? FALLBACK_TEXT : null,

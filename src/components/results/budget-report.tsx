@@ -17,7 +17,7 @@ import { FeedbackInvite } from '@/components/feedback/feedback-invite'
 import { SeverityBanner } from '@/components/severity-banner'
 import { TraceViewer } from '@/components/trace-viewer'
 import { BUDGET_STATUS_LABEL, budgetComparison, formatMoney } from './format'
-import { BulletList, CopyQuestionsButton, QuestionList, ReportActions, ReportHeader, SectionCard, WarningsList } from './report-parts'
+import { BulletList, DriverQuestionsCard, ReportActions, ReportHeader, SectionCard, WarningsList, WorkshopQuestionsCard } from './report-parts'
 
 export interface DeclaredBudgetInput {
   budgetText: string
@@ -169,14 +169,8 @@ export function BudgetReport({
             </SectionCard>
           )}
 
-          {report.questions.length > 0 && (
-            <SectionCard id="questions-heading" title="Preguntas para el taller">
-              <QuestionList questions={report.questions} />
-              <div className="mt-4 border-t border-brand-border-light pt-3">
-                <CopyQuestionsButton questions={report.questions} />
-              </div>
-            </SectionCard>
-          )}
+          <DriverQuestionsCard questions={report.driverQuestions ?? []} />
+          <WorkshopQuestionsCard questions={report.questions} />
         </div>
       </div>
 
