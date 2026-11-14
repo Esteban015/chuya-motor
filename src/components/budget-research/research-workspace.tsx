@@ -14,6 +14,7 @@ import { CATEGORY_LABEL, MAX_DESCRIPTION, MAX_LINES, type LineCategory, type Res
 import { BulletList, CopyQuestionsButton, QuestionList, SectionCard } from '@/components/results/report-parts'
 import { ProvenanceBadge } from './badges'
 import { PartCard } from './part-card'
+import { AutoPricingPanel } from './auto-pricing-panel'
 
 let lineSeq = 0
 const newLineId = () => `added-${Date.now().toString(36)}-${++lineSeq}`
@@ -55,6 +56,7 @@ export function ResearchWorkspace({
   mode,
   serverTotalMinor,
   serverQuestions = [],
+  autoPricingEnabled = false,
 }: {
   lines: ResearchLine[]
   onLinesChange: (lines: ResearchLine[]) => void
@@ -62,6 +64,8 @@ export function ResearchWorkspace({
   mode: 'parts' | 'quote'
   serverTotalMinor?: number | null
   serverQuestions?: readonly string[]
+  /** Server feature flag (7C). Off → no automatic search UI and no request is ever made. */
+  autoPricingEnabled?: boolean
 }) {
   const [newPart, setNewPart] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
@@ -107,7 +111,9 @@ export function ResearchWorkspace({
             </h2>
             <p className="text-xs text-brand-text-muted">
               {vehicleLabel ? `Para ${vehicleLabel}. ` : 'Sin datos del vehículo: las búsquedas serán menos precisas. '}
-              Chuya Motor no consulta precios: abrís la búsqueda vos y cargás lo que encontrás.
+              {autoPricingEnabled
+                ? 'Podés abrir la búsqueda vos y cargar lo que encontrás, o probar la búsqueda automática de publicaciones (beta).'
+                : 'Chuya Motor no consulta precios: abrís la búsqueda vos y cargás lo que encontrás.'}
             </p>
           </div>
           {isQuote && sum.pricedLines > 0 && (
@@ -131,6 +137,8 @@ export function ResearchWorkspace({
             ))}
           </ul>
         )}
+
+        {autoPricingEnabled && parts.length > 0 && <AutoPricingPanel parts={parts} vehicle={vehicle} />}
 
         <form onSubmit={addPart} className="flex flex-col gap-2 sm:flex-row" aria-label="Agregar un repuesto">
           <label htmlFor={`${uid}-new`} className="sr-only">Nombre del repuesto a agregar</label>
