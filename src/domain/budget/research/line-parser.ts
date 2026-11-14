@@ -45,6 +45,11 @@ const TOTAL_LINE = /^\s*(sub)?total\b[^:=\d$]*[:=]?\s*(.*)$/i
 const PENDING = /^(.*?)\s*[:=]\s*(a confirmar|pendiente|por definir|sin precio|a cotizar|consultar)\s*\.?\s*$/i
 const PRICED = /^(.*?)\s*(?:[:=]\s*|(?=\$))\$?\s*(\d[\d.,]*)\s*(?:ars|pesos?)?\s*\.?\s*$/i
 
+/** Same deterministic classifier used by the parser (quote mode): server-side part identification (7C). */
+export function classifyDescription(description: string): LineCategory {
+  return classify(description, false)
+}
+
 function classify(description: string, assumeParts: boolean): LineCategory {
   const n = normalizeForMatch(description)
   if (LABOR.test(n)) return 'labor'

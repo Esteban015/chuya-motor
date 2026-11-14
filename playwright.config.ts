@@ -34,6 +34,11 @@ export default defineConfig({
       // 7A: test-only feedback form URL (never a real form; the E2E never contacts Google).
       // NEXT_PUBLIC_* is inlined at build time: CI builds with the same value (ci.yml).
       NEXT_PUBLIC_FEEDBACK_FORM_URL: 'https://docs.google.com/forms/d/e/E2E-TEST-ONLY/viewform',
+      // 7C: the automatic parts pricing UI is ON for E2E, but the provider is forced to "none" so the
+      // server can never call SerpApi, even if .env.local holds SERPAPI_API_KEY. Successful searches
+      // are simulated with page.route() (e2e/parts-pricing.spec.ts).
+      PARTS_PRICING_ENABLED: 'true',
+      PARTS_PRICING_PROVIDER: 'none',
     },
   },
 })
