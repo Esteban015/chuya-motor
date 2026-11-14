@@ -21,11 +21,18 @@
  *   audiences, and ambiguous descriptions ("luz intermitente") are clarified, never assumed.
  *   question-audience.ts re-classifies both lists deterministically: the prompt is not trusted alone.
  *   Same single call; no extra LLM request. Not validated against the real model yet.
+ *
+ * v2.3.0 (Incremento 7D.1 — vehicle context; 7D.2 identification levels): system prompt UNCHANGED. The user content now
+ *   also carries the vehicle type, version, engine and fuel (previously dropped before the prompt)
+ *   and where those data come from (declared / catalog / partial; synthetic test catalog flagged).
+ *   Values are quoted data in Spanish, never raw enums. Not validated against the real model yet.
  */
 import type { LLMCompletionRequest } from '@/agents/llm/llm-adapter'
+import type { Vehicle } from '@/domain/vehicle/vehicle'
+import { LEGACY_FUEL_LABEL } from '@/domain/vehicle/vehicle-catalog'
 import type { GraphState } from '../graph-state'
 
-export const DIAGNOSIS_PROMPT_VERSION = '2.2.0'
+export const DIAGNOSIS_PROMPT_VERSION = '2.3.0'
 
 /** Never send raw enum values: the model tends to echo them ("nivel de experiencia novice", D-09). */
 export function describeExperienceLevel(level: GraphState['experienceLevel'] | string | undefined): string {
@@ -69,6 +76,53 @@ function quoteUserText(text: string): string {
   return `"""\n${text.replace(/"""/g, '" " "')}\n"""`
 }
 
+// 7D.1: Spanish labels only — raw enum values are never sent (D-09).
+const VEHICLE_TYPE_TEXT: Record<NonNullable<Vehicle['vehicleType']>, string> = {
+  sedan: 'auto',
+  hatchback: 'auto (hatchback)',
+  suv: 'SUV',
+  pickup: 'pick-up',
+  van: 'utilitario',
+  motorcycle: 'moto',
+  other: 'otro',
+}
+
+/** Free text from the person or a catalog label: one quoted line, no prompt structure. */
+function quoteField(text: string): string {
+  return `"${text.replace(/["`\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80)}"`
+}
+
+function provenanceText(v: Vehicle): string {
+  const fixture = v.catalog?.isFixture ? ' (catálogo de prueba: no representa vehículos reales)' : ''
+  // Identification only: no level means that a part is compatible (7D.2).
+  const note = ' Identificar el vehículo no certifica la compatibilidad de repuestos; no es una ficha técnica.'
+  switch (v.validation) {
+    case 'identity_full':
+      return `identificados con un catálogo${fixture}: tipo, marca, modelo, año y versión figuran en la fuente.${note}`
+    case 'identity_basic':
+      return `marca y modelo identificados con un catálogo${fixture}; el año o la versión no están confirmados.${note}`
+    case 'identity_partial':
+      return `identificados parcialmente con un catálogo${fixture}; el resto lo declaró la persona, sin verificar.${note}`
+    case 'identity_conflict':
+      return `el catálogo${fixture} no coincide con algunos datos declarados (por ejemplo, año o combustible): tratalos como inciertos y, si importan, preguntalos.${note}`
+    default:
+      return 'declarados por la persona, sin verificar.'
+  }
+}
+
+/** Extra vehicle lines (7D.1): engine, fuel and type were previously lost before the prompt. */
+function vehicleDetailLines(v: Vehicle | null | undefined): string[] {
+  if (!v) return []
+  const lines: string[] = []
+  if (v.vehicleType) lines.push(`Tipo de vehículo: ${VEHICLE_TYPE_TEXT[v.vehicleType]}`)
+  if (v.version && v.version !== v.engine) lines.push(`Versión: ${quoteField(v.version)}`)
+  if (v.engine) lines.push(`Motor: ${quoteField(v.engine)}`)
+  if (v.fuelType) lines.push(`Combustible: ${LEGACY_FUEL_LABEL[v.fuelType]}`)
+  const hasData = v.make || v.model || v.year !== undefined || lines.length > 0
+  if (hasData) lines.push(`Origen de los datos del vehículo: ${provenanceText(v)}`)
+  return lines
+}
+
 export function buildDiagnosisRequest(state: Pick<GraphState, 'vehicle' | 'experienceLevel' | 'userText'>): LLMCompletionRequest {
   const vehicleLine = state.vehicle
     ? `${state.vehicle.make ?? ''} ${state.vehicle.model ?? ''} ${state.vehicle.year ?? ''}`.trim() || 'No especificado'
@@ -78,6 +132,7 @@ export function buildDiagnosisRequest(state: Pick<GraphState, 'vehicle' | 'exper
     system: DIAGNOSIS_SYSTEM_PROMPT,
     userContent: [
       `Vehículo declarado: ${vehicleLine}`,
+      ...vehicleDetailLines(state.vehicle),
       `Perfil de quien consulta (solo para ajustar el lenguaje; no lo menciones): ${describeExperienceLevel(state.experienceLevel)}`,
       'Síntoma declarado por la persona (texto literal):',
       quoteUserText(state.userText ?? ''),
@@ -89,5 +144,5 @@ export function buildDiagnosisRequest(state: Pick<GraphState, 'vehicle' | 'exper
 export function vehicleLineOf(state: Pick<GraphState, 'vehicle'>): string {
   const v = state.vehicle
   if (!v) return ''
-  return [v.make, v.model, v.year].filter((x) => x !== undefined && x !== null).join(' ')
+  return [v.make, v.model, v.year, v.engine].filter((x) => x !== undefined && x !== null).join(' ')
 }

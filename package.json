@@ -22,7 +22,10 @@
     "smoke:groq": "tsx benchmark/smoke/groq-connectivity.ts",
     "pilot:groq": "tsx benchmark/smoke/groq-pilot.ts",
     "review:groq": "tsx benchmark/review/quality-review.ts",
-    "verify:upstash": "tsx benchmark/smoke/upstash-integration.ts"
+    "verify:upstash": "tsx benchmark/smoke/upstash-integration.ts",
+    "catalog:ingest": "tsx scripts/vehicle-catalog/ingest.ts",
+    "catalog:dnrpa-extract": "tsx scripts/vehicle-catalog/dnrpa-pdf-to-csv.ts",
+    "bench:catalog": "tsx benchmark/catalog/catalog-latency.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

@@ -9,6 +9,23 @@ export interface ApiVehicleInput {
   year?: number
   vehicleType?: 'sedan' | 'hatchback' | 'suv' | 'pickup' | 'van' | 'motorcycle' | 'other'
   fuelType?: 'gasoline' | 'diesel' | 'gnc' | 'hybrid' | 'electric' | 'other'
+  /** 7D.1 (additive): engine as typed by the person (≤ 40 chars). Previously dropped by the API. */
+  engine?: string
+  /**
+   * 7D.1 (additive): IDs chosen in the VehicleSelector. Re-validated on the server; the client can
+   * never set the validation level itself.
+   */
+  catalog?: ApiCatalogSelection
+}
+
+export interface ApiCatalogSelection {
+  typeId: string
+  brandId?: string
+  modelId?: string
+  versionId?: string
+  yearUnknown?: boolean
+  engineUnknown?: boolean
+  catalogVersion?: string
 }
 
 export interface AnalyzeRequest {

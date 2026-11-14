@@ -145,7 +145,7 @@ describe('QA-05 budget', () => {
 
 describe('QA-06 prompt ↔ stub consistency', () => {
   it('prompt v2.2.0 asks for two separate lists with explicit audiences', () => {
-    expect(DIAGNOSIS_PROMPT_VERSION).toBe('2.2.0')
+    expect(DIAGNOSIS_PROMPT_VERSION).toBe('2.3.0')
     expect(DIAGNOSIS_SYSTEM_PROMPT).toMatch(/"driverQuestions": string\[\], "workshopQuestions": string\[\]/)
     expect(DIAGNOSIS_SYSTEM_PROMPT).toMatch(/"driverQuestions": preguntas para la persona que consulta/)
     expect(DIAGNOSIS_SYSTEM_PROMPT).toMatch(/"workshopQuestions": preguntas que la persona le puede hacer al mecánico/)
