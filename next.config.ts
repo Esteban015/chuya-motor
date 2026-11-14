@@ -31,7 +31,17 @@ const securityHeaders = [
   },
 ]
 
+// 7D.2: the versioned vehicle catalog (read from disk by the server, never sent whole to the
+// browser) must ship with every server function that reads it.
+const VEHICLE_CATALOG_FILES = ['./data/vehicle-catalog/dnrpa-2026-11-01/dataset.json']
+
 const nextConfig: NextConfig = {
+  outputFileTracingIncludes: {
+    '/api/vehicle-catalog': VEHICLE_CATALOG_FILES,
+    '/api/analyze': VEHICLE_CATALOG_FILES,
+    '/demo/falla': VEHICLE_CATALOG_FILES,
+    '/demo/presupuesto': VEHICLE_CATALOG_FILES,
+  },
   async headers() {
     return [
       {

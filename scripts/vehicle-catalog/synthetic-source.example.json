@@ -1,0 +1,18 @@
+{
+  "source": {
+    "id": "synthetic-registry",
+    "name": "Registro sintético de pruebas (datos ficticios)",
+    "version": "syn-1",
+    "publishedAt": "2026-11-14",
+    "kind": "fixture",
+    "isFixture": true,
+    "license": { "status": "synthetic" }
+  },
+  "catalogVersion": "synthetic-registry-2026-11-14.1",
+  "overrides": {
+    "brandAliases": { "ficticia automotores": "ficticia autos" },
+    "categoryOverrides": { "ficticia autos|delta": "pickup" },
+    "modelNames": { "prueba motos|sx110": "Scooter X 110" },
+    "multiWordFamilies": ["FURGON F"]
+  }
+}

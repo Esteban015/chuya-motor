@@ -10,13 +10,14 @@ import type { AnalyzeOutput } from '@/agents/graph/types'
 import { sanitizeTraces } from '@/agents/graph/trace-sanitizer'
 import { devTraceStore } from '@/agents/graph/dev-trace-store'
 import { resolveUserFacingSeverity } from '@/domain/safety/severity-assessor'
-import type {
-  ClientAnalyzeOutput,
-  ApiVehicleInput,
-} from './schema'
+import type { ClientAnalyzeOutput } from './schema'
+import { CatalogSelectionInputSchema, resolveVehicle } from '@/domain/vehicle/vehicle-validation'
+import { getVehicleCatalog } from '@/server/vehicle-catalog/catalog-config'
 
 // ── Request schema ─────────────────────────────────────────────────────────
 
+// Not .strict(): unknown keys from older / newer clients are stripped, never trusted (a client-sent
+// "validation" is simply dropped). The nested `catalog` object IS strict.
 const ApiVehicleSchema = z.object({
   make: z.string().min(1).max(50).optional(),
   model: z.string().min(1).max(50).optional(),
@@ -27,6 +28,18 @@ const ApiVehicleSchema = z.object({
   fuelType: z
     .enum(['gasoline', 'diesel', 'gnc', 'hybrid', 'electric', 'other'])
     .optional(),
+  // 7D.1: previously dropped silently.
+  engine: z.string().trim().min(1).max(40, 'El motor no puede superar los 40 caracteres.').optional(),
+  catalog: z
+    .unknown()
+    .optional()
+    .transform((value, ctx) => {
+      if (value === undefined) return undefined
+      const parsed = CatalogSelectionInputSchema.safeParse(value)
+      if (parsed.success) return parsed.data
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Los datos del catálogo de vehículos no son válidos.' })
+      return z.NEVER
+    }),
 })
 
 const AnalyzeRequestSchema = z.object({
@@ -47,14 +60,16 @@ const AnalyzeRequestSchema = z.object({
 
 // ── Vehicle mapping ────────────────────────────────────────────────────────
 // No licensePlate or odometer exposed from the API (privacy).
+// 7D.1: engine is kept, and catalog IDs are re-validated server-side (vehicle-validation.ts). The
+// validation level is computed here, never read from the client. Catalog off / failing → the
+// vehicle is treated as declared; the diagnosis is never blocked by the catalog.
 
-function mapVehicle(v: ApiVehicleInput): Vehicle {
-  const vehicle: Vehicle = {}
-  if (v.make) vehicle.make = v.make
-  if (v.model) vehicle.model = v.model
-  if (v.year) vehicle.year = v.year
-  if (v.vehicleType) vehicle.vehicleType = v.vehicleType
-  if (v.fuelType) vehicle.fuelType = v.fuelType
+async function mapVehicle(v: z.infer<typeof ApiVehicleSchema>): Promise<Vehicle> {
+  const { vehicle } = await resolveVehicle(
+    { make: v.make, model: v.model, year: v.year, vehicleType: v.vehicleType, fuelType: v.fuelType, engine: v.engine },
+    v.catalog,
+    v.catalog ? getVehicleCatalog() : null,
+  )
   return vehicle
 }
 
@@ -157,7 +172,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       {
         caseId: crypto.randomUUID(),
         userText,
-        vehicle: vehicle ? mapVehicle(vehicle) : undefined,
+        vehicle: vehicle ? await mapVehicle(vehicle) : undefined,
         experienceLevel: experienceLevel ?? 'unknown',
         dataLabel: 'user_input',
       },

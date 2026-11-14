@@ -14,7 +14,7 @@
  *      search, manual references and comparison. No extra LLM call.
  * Form data survives going back from results or errors. Nothing is stored or sent to Analytics.
  */
-import { useId, useState } from 'react'
+import { useId, useReducer, useState } from 'react'
 import Link from 'next/link'
 import type { AnalyzeRequest, ApiVehicleInput, ClientAnalyzeOutput, SafetyBlockPayload } from '@/app/api/analyze/schema'
 import { SiteModeBadge } from '@/components/ai-status-badge'
@@ -31,6 +31,9 @@ import { parseResearchLines } from '@/domain/budget/research/line-parser'
 import { mergeLines } from '@/domain/budget/research/merge'
 import { localSafetyCheck, screenPartDescription } from '@/domain/budget/research/local-safety'
 import type { ResearchLine, VehicleInfo } from '@/domain/budget/research/types'
+import { VehicleSelector } from '@/components/vehicle/vehicle-selector'
+import { CATEGORY_LABEL } from '@/domain/vehicle/vehicle-catalog'
+import { initialVehicleSelection, manualYearError, selectionToApiVehicle, selectionToVehicleInfo, vehicleSelectionReducer } from '@/domain/vehicle/vehicle-selection'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -140,7 +143,13 @@ function PartsHelp() {
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-export function PresupuestoClient({ autoPricingEnabled = false }: { autoPricingEnabled?: boolean }) {
+/**
+ * 7D.1: `vehicleSelectorEnabled` (server flag, default off) swaps the free-text vehicle fields for
+ * the dependent VehicleSelector. Off → identical to before 7D, except that the typed engine now
+ * reaches /api/analyze (it was silently dropped).
+ */
+export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorEnabled = false }: { autoPricingEnabled?: boolean; vehicleSelectorEnabled?: boolean }) {
+  const [selection, dispatchSelection] = useReducer(vehicleSelectionReducer, initialVehicleSelection)
   const [mode, setMode] = useState<BudgetMode>('quote')
   const [form, setForm] = useState<FormValues>(INITIAL_FORM)
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, string>>>({})
@@ -158,12 +167,17 @@ export function PresupuestoClient({ autoPricingEnabled = false }: { autoPricingE
   const isLoading = isQuote && quoteState.kind === 'loading'
   const isResult = isQuote ? quoteState.kind === 'success' : partsState.kind === 'results'
 
-  const vehicle: VehicleInfo = {
-    make: form.make.trim() || undefined,
-    model: form.model.trim() || undefined,
-    year: form.year.trim() || undefined,
-    engine: form.engine.trim() || undefined,
-  }
+  const vehicle: VehicleInfo = vehicleSelectorEnabled
+    ? selectionToVehicleInfo(selection)
+    : {
+        make: form.make.trim() || undefined,
+        model: form.model.trim() || undefined,
+        year: form.year.trim() || undefined,
+        engine: form.engine.trim() || undefined,
+      }
+  const vehicleTypeLabel = vehicleSelectorEnabled
+    ? selection.type ? CATEGORY_LABEL[selection.type.category] : undefined
+    : form.vehicleType ? VEHICLE_TYPE_LABEL[form.vehicleType] : undefined
 
   function update<K extends FieldKey>(key: K, value: FormValues[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -172,7 +186,13 @@ export function PresupuestoClient({ autoPricingEnabled = false }: { autoPricingE
 
   function fillExample() {
     if (isQuote) setForm((p) => ({ ...p, budgetText: DEMO_BUDGET }))
-    else setForm((p) => ({ ...p, partsText: DEMO_PARTS, ...DEMO_VEHICLE }))
+    else if (vehicleSelectorEnabled) {
+      // The example vehicle is real, so it can never come from the synthetic catalog: it is typed
+      // in manual mode and stays marked as not verified.
+      setForm((p) => ({ ...p, partsText: DEMO_PARTS }))
+      dispatchSelection({ type: 'switchToManual' })
+      for (const field of ['make', 'model', 'year', 'engine'] as const) dispatchSelection({ type: 'manualField', field, value: DEMO_VEHICLE[field] })
+    } else setForm((p) => ({ ...p, partsText: DEMO_PARTS, ...DEMO_VEHICLE }))
     setFieldErrors({})
   }
 
@@ -182,7 +202,10 @@ export function PresupuestoClient({ autoPricingEnabled = false }: { autoPricingE
     if (isQuote && text.length < 10) errors.budgetText = 'Ingresá las partidas del presupuesto (al menos 10 caracteres).'
     if (!isQuote && text.length < 3) errors.partsText = 'Escribí al menos un repuesto.'
     if (text.length > 2000) errors[textKey] = 'El texto no puede superar los 2000 caracteres.'
-    if (form.year) {
+    if (vehicleSelectorEnabled) {
+      const yearError = manualYearError(selection)
+      if (yearError) errors.year = yearError
+    } else if (form.year) {
       const y = Number(form.year)
       if (!Number.isInteger(y) || y < 1900 || y > 2100) errors.year = 'El año debe estar entre 1900 y 2100.'
     }
@@ -213,12 +236,17 @@ export function PresupuestoClient({ autoPricingEnabled = false }: { autoPricingE
 
   async function submitQuote() {
     setQuoteState({ kind: 'loading' })
-    const apiVehicle: ApiVehicleInput = {}
-    if (form.vehicleType) apiVehicle.vehicleType = form.vehicleType as VehicleType
-    if (form.make.trim()) apiVehicle.make = form.make.trim()
-    if (form.model.trim()) apiVehicle.model = form.model.trim()
-    if (form.year) apiVehicle.year = Number(form.year)
-    // Unchanged contract: the engine is used only locally for searches.
+    let apiVehicle: ApiVehicleInput = {}
+    if (vehicleSelectorEnabled) {
+      apiVehicle = selectionToApiVehicle(selection)
+    } else {
+      if (form.vehicleType) apiVehicle.vehicleType = form.vehicleType as VehicleType
+      if (form.make.trim()) apiVehicle.make = form.make.trim()
+      if (form.model.trim()) apiVehicle.model = form.model.trim()
+      if (form.year) apiVehicle.year = Number(form.year)
+      // 7D.1: the typed engine reaches the API (it was silently dropped before).
+      if (form.engine.trim()) apiVehicle.engine = form.engine.trim()
+    }
     const body: AnalyzeRequest = { userText: form.budgetText.trim() }
     if (Object.keys(apiVehicle).length > 0) body.vehicle = apiVehicle
 
@@ -323,7 +351,7 @@ export function PresupuestoClient({ autoPricingEnabled = false }: { autoPricingE
               report={quoteState.report}
               declared={{
                 budgetText: form.budgetText.trim(),
-                vehicleType: form.vehicleType ? VEHICLE_TYPE_LABEL[form.vehicleType] : undefined,
+                vehicleType: vehicleTypeLabel,
                 make: vehicle.make,
                 model: vehicle.model,
                 year: vehicle.year,
@@ -454,39 +482,47 @@ export function PresupuestoClient({ autoPricingEnabled = false }: { autoPricingE
                         </div>
                       </div>
 
-                      <fieldset className="space-y-4">
-                        <legend className="text-sm font-medium text-brand-text-muted">Datos del vehículo (opcional)</legend>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <div>
-                            <label htmlFor="make" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Marca</label>
-                            <input id="make" name="make" type="text" maxLength={40} placeholder="Ej: Fiat" value={form.make} onChange={(e) => update('make', e.target.value)} disabled={isLoading} className={inputCls} />
-                          </div>
-                          <div>
-                            <label htmlFor="model" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Modelo</label>
-                            <input id="model" name="model" type="text" maxLength={40} placeholder="Ej: Palio" value={form.model} onChange={(e) => update('model', e.target.value)} disabled={isLoading} className={inputCls} />
-                          </div>
-                          <div>
-                            <label htmlFor="year" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Año</label>
-                            <input id="year" name="year" type="number" min={1900} max={2100} placeholder="Ej: 2017" value={form.year} onChange={(e) => update('year', e.target.value)} disabled={isLoading} aria-invalid={!!fieldErrors.year} aria-describedby={fieldErrors.year ? yearErrorId : undefined} className={inputCls} />
-                            {fieldErrors.year && <p id={yearErrorId} role="alert" className="mt-1.5 text-xs text-red-600">{fieldErrors.year}</p>}
-                          </div>
-                          <div>
-                            <label htmlFor="engine" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Motor</label>
-                            <input id="engine" name="engine" type="text" maxLength={40} placeholder="Ej: 1.4 8v" value={form.engine} onChange={(e) => update('engine', e.target.value)} disabled={isLoading} className={inputCls} />
-                          </div>
-                          {isQuote && (
-                            <div>
-                              <label htmlFor="vehicleType" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Tipo de vehículo</label>
-                              <select id="vehicleType" name="vehicleType" value={form.vehicleType} onChange={(e) => update('vehicleType', e.target.value as VehicleType | '')} disabled={isLoading} className={inputCls}>
-                                <option value="">Seleccioná...</option>
-                                {(Object.keys(VEHICLE_TYPE_LABEL) as VehicleType[]).map((t) => (
-                                  <option key={t} value={t}>{VEHICLE_TYPE_LABEL[t]}</option>
-                                ))}
-                              </select>
-                            </div>
-                          )}
+                      {vehicleSelectorEnabled ? (
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium text-brand-text-muted">Datos del vehículo (opcional)</p>
+                          <VehicleSelector state={selection} dispatch={dispatchSelection} askVersion disabled={isLoading} />
+                          {fieldErrors.year && <p role="alert" className="text-xs text-red-600">{fieldErrors.year}</p>}
                         </div>
-                      </fieldset>
+                      ) : (
+                        <fieldset className="space-y-4">
+                          <legend className="text-sm font-medium text-brand-text-muted">Datos del vehículo (opcional)</legend>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label htmlFor="make" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Marca</label>
+                              <input id="make" name="make" type="text" maxLength={40} placeholder="Ej: Fiat" value={form.make} onChange={(e) => update('make', e.target.value)} disabled={isLoading} className={inputCls} />
+                            </div>
+                            <div>
+                              <label htmlFor="model" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Modelo</label>
+                              <input id="model" name="model" type="text" maxLength={40} placeholder="Ej: Palio" value={form.model} onChange={(e) => update('model', e.target.value)} disabled={isLoading} className={inputCls} />
+                            </div>
+                            <div>
+                              <label htmlFor="year" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Año</label>
+                              <input id="year" name="year" type="number" min={1900} max={2100} placeholder="Ej: 2017" value={form.year} onChange={(e) => update('year', e.target.value)} disabled={isLoading} aria-invalid={!!fieldErrors.year} aria-describedby={fieldErrors.year ? yearErrorId : undefined} className={inputCls} />
+                              {fieldErrors.year && <p id={yearErrorId} role="alert" className="mt-1.5 text-xs text-red-600">{fieldErrors.year}</p>}
+                            </div>
+                            <div>
+                              <label htmlFor="engine" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Motor</label>
+                              <input id="engine" name="engine" type="text" maxLength={40} placeholder="Ej: 1.4 8v" value={form.engine} onChange={(e) => update('engine', e.target.value)} disabled={isLoading} className={inputCls} />
+                            </div>
+                            {isQuote && (
+                              <div>
+                                <label htmlFor="vehicleType" className="mb-1.5 block text-xs font-medium text-brand-text-muted">Tipo de vehículo</label>
+                                <select id="vehicleType" name="vehicleType" value={form.vehicleType} onChange={(e) => update('vehicleType', e.target.value as VehicleType | '')} disabled={isLoading} className={inputCls}>
+                                  <option value="">Seleccioná...</option>
+                                  {(Object.keys(VEHICLE_TYPE_LABEL) as VehicleType[]).map((t) => (
+                                    <option key={t} value={t}>{VEHICLE_TYPE_LABEL[t]}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        </fieldset>
+                      )}
 
                       <PrivacyNotice />
 
