@@ -116,10 +116,13 @@ export function BudgetReport({
   report,
   declared,
   onNewQuery,
+  research,
 }: {
   report: ClientAnalyzeOutput
   declared: DeclaredBudgetInput
   onNewQuery: () => void
+  /** 7B: parts research / comparison, rendered after the verification and before the actions. */
+  research?: React.ReactNode
 }) {
   const budget = report.route === 'budget' ? report.budget : null
   const vehicleName = [declared.make, declared.model, declared.year].filter(Boolean).join(' ')
@@ -173,6 +176,8 @@ export function BudgetReport({
           <WorkshopQuestionsCard questions={report.questions} />
         </div>
       </div>
+
+      {research}
 
       <ReportActions onNewQuery={onNewQuery} newQueryLabel="Analizar otro presupuesto" />
 
