@@ -31,6 +31,9 @@ export default defineConfig({
       // 6.4E: never touch the real Upstash database from .env.local during E2E; counters stay
       // in memory for this local server only (the stub is never guarded by LLM budgets).
       LLM_QUOTA_STORE: 'memory',
+      // 7A: test-only feedback form URL (never a real form; the E2E never contacts Google).
+      // NEXT_PUBLIC_* is inlined at build time: CI builds with the same value (ci.yml).
+      NEXT_PUBLIC_FEEDBACK_FORM_URL: 'https://docs.google.com/forms/d/e/E2E-TEST-ONLY/viewform',
     },
   },
 })
