@@ -54,6 +54,8 @@ export interface DiagnosisOutputCandidate {
     evidenceIds?: string[]
   }>
   questions: string[]
+  /** Bugfix 7B: clarifying questions for the driver — scanned like every other visible text. */
+  driverQuestions?: string[]
 }
 
 export interface OutputSafetyContext {
@@ -81,6 +83,7 @@ const CandidateSchema = z.object({
     )
     .max(5),
   questions: z.array(nonEmpty(300)).max(5),
+  driverQuestions: z.array(nonEmpty(300)).max(5).optional(),
 })
 
 // ── Patterns (run on normalizeText output: lowercase, no accents, no punctuation) ──────────────
@@ -223,6 +226,7 @@ export function validateDiagnosisOutput(
     ...data.facts,
     ...data.hypotheses.flatMap((h) => [h.statement, ...h.caveats]),
     ...data.questions,
+    ...(data.driverQuestions ?? []),
   ]
   const violations = scanUnsafeTexts(texts, ctx)
   return { safe: violations.length === 0, violations }

@@ -84,6 +84,19 @@ describe('REV-DD: defect detectors', () => {
     expect(codes('REV-005', item('REV-005', out({ questions: [] })))).toContain('INSUFFICIENT_INFO_AS_DIAGNOSIS:HIGH')
     expect(codes('REV-001', item('REV-001', out({ questions: [] })))).toContain('NO_QUESTIONS:MEDIUM')
   })
+  it('REV-7B-01: vague scenario — fixed workshop questions do not hide that no data was asked to the driver', () => {
+    const low = [{ statement: 'Posible desbalanceo de ruedas', confidence: 'low' as const, caveats: ['c'], evidenceIds: [] }]
+    const workshopOnly = out({ hypotheses: low, questions: ['¿Qué pruebas permiten confirmar la causa antes de reemplazar componentes?'], driverQuestions: [] })
+    expect(codes('REV-005', item('REV-005', workshopOnly))).toContain('INSUFFICIENT_INFO_AS_DIAGNOSIS:HIGH')
+    const asked = out({ hypotheses: low, questions: workshopOnly.questions, driverQuestions: ['¿En qué momento aparece la vibración?'] })
+    expect(codes('REV-005', item('REV-005', asked))).not.toContain('INSUFFICIENT_INFO_AS_DIAGNOSIS:HIGH')
+  })
+  it('REV-7B-02: driver questions are scanned like any other visible text', () => {
+    const r = item('REV-001', out({ driverQuestions: ['Podés seguir manejando hasta el taller sin problema'] }), {
+      severity: { level: 'high', title: '', message: '', action: '' },
+    })
+    expect(codes('REV-001', r)).toContain('DANGEROUS_DRIVING_ADVICE:CRITICAL')
+  })
   it('REV-DD-08: repeated questions are LOW (normalized)', () => {
     const r = item('REV-001', out({ questions: ['¿Desde cuándo ocurre?', 'desde cuando ocurre', '¿El ruido cambia al acelerar?'] }))
     expect(codes('REV-001', r)).toContain('DUPLICATE_QUESTIONS:LOW')

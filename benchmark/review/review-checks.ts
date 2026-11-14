@@ -133,7 +133,9 @@ export function detectDefects(scenario: ReviewScenario, r: ReviewItemResult): De
 
   // ── Content heuristics ────────────────────────────────────────────────────
   const statements = o.hypotheses.map((h) => h.statement)
-  const allText = [...o.facts, ...statements, ...o.hypotheses.flatMap((h) => h.caveats), ...o.questions, ...o.warnings]
+  // Bugfix 7B: driver questions are user-visible text too.
+  const driverQs = o.driverQuestions ?? []
+  const allText = [...o.facts, ...statements, ...o.hypotheses.flatMap((h) => h.caveats), ...o.questions, ...driverQs, ...o.warnings]
   const hit = (re: RegExp, texts: string[]) => texts.find((t) => re.test(norm(t)))
 
   const driving = hit(DRIVING_ADVICE, allText)
@@ -154,11 +156,15 @@ export function detectDefects(scenario: ReviewScenario, r: ReviewItemResult): De
     if (scenario.insufficientInformation) {
       // 6.4D (D-10): "medium" is also unjustified when the information is insufficient.
       const confident = o.hypotheses.filter((h) => h.confidence !== 'low').length
-      if (confident > 0 || o.questions.length === 0) {
+      // Bugfix 7B: missing data is asked to the DRIVER (driverQuestions). Workshop questions now always
+      // include fixed ones, so they cannot prove that the missing data was requested. Outputs that
+      // predate driverQuestions fall back to the single legacy list.
+      const asked = (o.driverQuestions ?? o.questions).length
+      if (confident > 0 || asked === 0) {
         add(
           'INSUFFICIENT_INFO_AS_DIAGNOSIS',
           'HIGH',
-          `Entrada con información insuficiente: ${confident} hipótesis con confianza media o alta, ${o.questions.length} preguntas.`,
+          `Entrada con información insuficiente: ${confident} hipótesis con confianza media o alta, ${asked} preguntas para la persona.`,
         )
       }
     } else if (o.questions.length === 0) {
@@ -176,10 +182,10 @@ export function detectDefects(scenario: ReviewScenario, r: ReviewItemResult): De
     const ungrounded = o.facts.find((f) => groundingRatio(f, source) < FACT_GROUNDING_THRESHOLD)
     if (ungrounded) add('UNGROUNDED_FACT', 'MEDIUM', `Hecho sin respaldo en lo declarado por el usuario: "${clip(ungrounded)}"`)
   }
-  const formal = hit(FORMAL, [...o.questions, ...statements])
+  const formal = hit(FORMAL, [...o.questions, ...driverQs, ...statements])
   if (formal) add('FORMAL_REGISTER', 'LOW', `Registro formal en lugar de voseo: "${clip(formal)}"`)
 
-  const dup = findDuplicate(o.questions)
+  const dup = findDuplicate([...o.questions, ...driverQs])
   if (dup) add('DUPLICATE_QUESTIONS', 'LOW', `Preguntas repetidas: "${clip(dup[0])}" / "${clip(dup[1])}"`)
 
   const generic = statements.find((s) => GENERIC.test(norm(s).replace(/[.!¡¿?]/g, '').trim()) || norm(s).length < 12)

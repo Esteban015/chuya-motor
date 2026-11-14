@@ -17,6 +17,7 @@
 import { normalizeText } from './safety-policy'
 import { matchesBrakeCapacityLoss } from './brake-capacity-signals'
 import { detectExplicitHazardInText, type ExplicitHazardKind } from './hazard-signals'
+import { detectEngineLightState } from './engine-light-signals'
 
 export type SeverityLevel = 'normal' | 'high' | 'critical'
 
@@ -128,6 +129,35 @@ const CRITICAL_RULES: readonly Rule[] = [
 // These indicate a condition that warrants prompt professional evaluation.
 
 const HIGH_RULES: readonly Rule[] = [
+  // Engine warning light (bugfix 7B safety review; sources: docs/reviews/check-engine-severity-7b.md).
+  // Checked FIRST among HIGH rules: its action (stop in a safe place) is the most conservative HIGH
+  // instruction and must not be replaced by a concurrent HIGH banner (e.g. brake noise).
+  // Blinking (confirmed) = usually a severe misfire that can damage the catalytic converter → HIGH:
+  // do not keep driving normally; slow down, stop in a safe place as soon as possible, switch off,
+  // request assistance / tow (Consumer Reports, AAA). Concurrent critical symptoms (fire/smoke, fuel,
+  // burning smell, loss of braking) are handled before: Safety Gate block or CRITICAL rules.
+  // Never CRITICAL by itself: "No conduzcas" stays reserved for those risks. Steady / occasional
+  // light: not an emergency → no rule. "Intermitente" next to the engine light is ambiguous →
+  // conditional HIGH, so the warning is not reduced for lack of clarity.
+  {
+    level: 'high',
+    test: (n) => detectEngineLightState(n) === 'blinking',
+    title: 'Atención: luz de motor que parpadea',
+    message:
+      'Una luz de motor (check engine) que parpadea suele indicar una falla de encendido importante, que puede dañar el catalizador y empeorar si seguís exigiendo el motor.',
+    action:
+      'No sigas circulando normalmente. Reducí la velocidad, evitá aceleraciones fuertes y, en cuanto puedas, detenete en un lugar seguro y apagá el motor. Pedí asistencia mecánica o una grúa para llegar al taller. Si pierde potencia, se sacude o notás humo u olor extraño, detenete de inmediato; si hay humo, alejate del vehículo y llamá a emergencias (911).',
+  },
+  {
+    level: 'high',
+    test: (n) => detectEngineLightState(n) === 'ambiguous_intermittent',
+    title: 'Síntoma de alta atención',
+    message:
+      'No está claro si la luz de motor parpadea o aparece solo a veces. Si parpadea, suele indicar una falla de encendido importante que puede dañar el catalizador; si queda fija o aparece a veces, no suele ser una emergencia, pero hay que revisarla.',
+    action:
+      'Si la luz parpadea, no sigas circulando normalmente: reducí la velocidad, detenete en un lugar seguro en cuanto puedas, apagá el motor y pedí asistencia mecánica o una grúa. Si pierde potencia, se sacude o notás humo u olor extraño, detenete de inmediato. Si la luz queda fija o aparece solo a veces, programá una revisión pronto.',
+  },
+
   // Vibration when braking
   {
     level: 'high',
@@ -201,6 +231,7 @@ const HIGH_RULES: readonly Rule[] = [
     action:
       'Revisá los niveles de fluidos y consultá con un taller para identificar el origen de la pérdida.',
   },
+
 ]
 
 /**

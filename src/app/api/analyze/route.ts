@@ -86,6 +86,7 @@ function sanitizeOutput(output: AnalyzeOutput, userText: string, processing: Pro
       // evidenceIds stripped — not exposed to client
     })),
     questions: output.questions,
+    driverQuestions: output.driverQuestions ?? [],
     warnings: output.warnings,
     budget: output.budget,
     missingInformation: output.missingInformation,

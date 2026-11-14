@@ -204,7 +204,20 @@ export function ReportView({ report }: ReportViewProps) {
         </section>
       )}
 
-      {/* Questions */}
+      {/* Bugfix 7B: clarifying questions for the driver, separate from the workshop questions. */}
+      {(report.driverQuestions ?? []).length > 0 && (
+        <section aria-labelledby="driver-questions-heading">
+          <SectionHeading id="driver-questions-heading">Para preparar tu consulta</SectionHeading>
+          <p className="mb-2 text-xs text-brand-text-muted">Preguntas para vos. Tener estas respuestas a mano ayuda al taller.</p>
+          <ul className="list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-brand-text">
+            {(report.driverQuestions ?? []).map((q, i) => (
+              <li key={i}>{q}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Questions for the workshop */}
       {report.questions.length > 0 && (
         <section aria-labelledby="questions-heading">
           <SectionHeading id="questions-heading">Preguntas para el taller</SectionHeading>

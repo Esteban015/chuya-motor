@@ -14,7 +14,9 @@ interface MockDiagnosisResponse {
     caveats: string[]
     evidenceIds: string[]
   }>
-  questions: string[]
+  // Prompt v2.2.0 (bugfix 7B): one list per audience — same keys the real providers are asked for.
+  driverQuestions: string[]
+  workshopQuestions: string[]
 }
 
 interface MockBudgetParseResponse {
@@ -23,7 +25,7 @@ interface MockBudgetParseResponse {
   currency: 'ARS' | 'USD' | null
 }
 
-const MOCK_DIAGNOSIS: MockDiagnosisResponse = {
+export const MOCK_DIAGNOSIS_RESPONSE: MockDiagnosisResponse = {
   facts: ['Síntoma reportado por el usuario (dato no verificado).'],
   hypotheses: [
     {
@@ -38,7 +40,8 @@ const MOCK_DIAGNOSIS: MockDiagnosisResponse = {
       evidenceIds: [],
     },
   ],
-  questions: ['¿Cuándo empezó el problema?', '¿El síntoma es constante o intermitente?'],
+  driverQuestions: ['¿Cuándo empezó el problema?', '¿El síntoma es constante o aparece solo a veces?'],
+  workshopQuestions: ['¿Qué pruebas hicieron para verificar el síntoma y qué encontraron?'],
 }
 
 function parseBudgetFromText(text: string): MockBudgetParseResponse {
@@ -141,7 +144,7 @@ export class DeterministicMockLLMAdapter implements LLMAdapter {
     const combined = `${req.system}\n${req.userContent}`
 
     if (combined.includes('[DIAGNOSIS_REQUEST]')) {
-      return { ok: true, content: JSON.stringify(MOCK_DIAGNOSIS) }
+      return { ok: true, content: JSON.stringify(MOCK_DIAGNOSIS_RESPONSE) }
     }
 
     if (combined.includes('[BUDGET_PARSE_REQUEST]')) {

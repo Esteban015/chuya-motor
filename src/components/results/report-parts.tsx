@@ -148,6 +148,35 @@ export function CopyQuestionsButton({ questions }: { questions: readonly string[
   )
 }
 
+// ── Questions by audience (bugfix 7B) ────────────────────────────────────────
+
+/** Clarifying questions for the driver. Not copied: they are for preparing, not for the mechanic. */
+export function DriverQuestionsCard({ questions }: { questions: readonly string[] }) {
+  if (questions.length === 0) return null
+  return (
+    <SectionCard id="driver-questions-heading" title="Para preparar tu consulta" tone="muted">
+      <p className="mb-3 text-xs leading-relaxed text-brand-text-muted">
+        Preguntas para vos. Tener estas respuestas a mano ayuda al taller; no hace falta que las respondas acá.
+      </p>
+      <BulletList items={questions} />
+    </SectionCard>
+  )
+}
+
+/** Mechanic-directed questions; "Copiar preguntas" copies only these. */
+export function WorkshopQuestionsCard({ questions }: { questions: readonly string[] }) {
+  if (questions.length === 0) return null
+  return (
+    <SectionCard id="questions-heading" title="Preguntas para el taller">
+      <p className="mb-3 text-xs leading-relaxed text-brand-text-muted">Para hacerle al mecánico cuando revise el vehículo.</p>
+      <QuestionList questions={questions} />
+      <div className="mt-4 border-t border-brand-border-light pt-3">
+        <CopyQuestionsButton questions={questions} />
+      </div>
+    </SectionCard>
+  )
+}
+
 // ── Lists ────────────────────────────────────────────────────────────────────
 
 export function BulletList({ items, tone = 'default' }: { items: readonly string[]; tone?: 'default' | 'warning' }) {

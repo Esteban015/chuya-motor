@@ -68,7 +68,13 @@ describe('D-13 / DSN-01: preventable format violations are recovered without rew
   it('DSN-01-B: more than 5 questions → the first 5 are kept unchanged', async () => {
     const qs = ['¿Uno?', '¿Dos?', '¿Tres?', '¿Cuatro?', '¿Cinco?', '¿Seis?']
     const r = await run(answer({ questions: qs }))
-    expect(r.questions).toEqual(qs.slice(0, 5))
+    // Normalization keeps the first 5 unchanged; bugfix 7B then appends the fixed mechanic-directed
+    // questions for the topic, so the model items are an unchanged prefix (the 6th never appears).
+    const kept = r.questions!.filter((q) => qs.includes(q))
+    expect(kept).toEqual(qs.slice(0, kept.length))
+    expect(kept.length).toBeGreaterThanOrEqual(2)
+    expect(r.questions).not.toContain('¿Seis?')
+    expect(r.questions!.length).toBeLessThanOrEqual(5)
     expect(r.traces![0]!.schemaIssues).toEqual(['questions:too_big'])
   })
 

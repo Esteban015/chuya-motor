@@ -96,6 +96,7 @@ export function toReviewMarkdown(meta: ReviewMeta, entries: ReviewEntry[]): stri
         })
         L.push('')
       }
+      if (o.driverQuestions?.length) L.push('**Para preparar tu consulta (preguntas para la persona):**', ...o.driverQuestions.map((q) => `- ${q}`), '')
       if (o.questions.length) L.push('**Preguntas para el taller:**', ...o.questions.map((q) => `- ${q}`), '')
       if (o.missingInformation.length) L.push('**Información faltante:**', ...o.missingInformation.map((m) => `- ${m}`), '')
       const awps = avgWordsPerSentence(o)

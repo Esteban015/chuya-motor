@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { LLMAdapter } from '@/agents/llm/llm-adapter'
 import { refineDiagnosisOutput } from '@/domain/quality/diagnosis-quality'
+import { arrangeSymptomQuestions } from '@/domain/questions/question-audience'
 import { buildDiagnosisRequest, vehicleLineOf } from './diagnosis-prompt'
 import { extractJSON } from '@/agents/llm/llm-json-extract'
 import { availabilityWarnings, PROTECTION_ERROR_CODES } from '@/agents/llm/llm-availability'
@@ -14,12 +15,13 @@ import { createTrace } from '../trace'
 
 const NODE_ID = 'diagnosisAgent'
 
-// Prompt: diagnosis-prompt.ts (v2.0.0, 6.4D) — shared by every provider.
+// Prompt: diagnosis-prompt.ts (v2.2.0, bugfix 7B) — shared by every provider.
 
 const DiagnosisResponseSchema = z.object({
   facts: z.array(z.string().max(500)).max(10),
   hypotheses: z.array(HypothesisSchema).max(5),
   questions: z.array(z.string().max(300)).max(5),
+  driverQuestions: z.array(z.string().max(300)).max(5),
 })
 
 export function createDiagnosisAgentNode(llmAdapter: LLMAdapter) {
@@ -91,6 +93,7 @@ export function createDiagnosisAgentNode(llmAdapter: LLMAdapter) {
             facts: [],
             hypotheses: [],
             questions: [],
+            driverQuestions: [],
             fallback: true,
             errorCode: 'LLM_OUTPUT_UNSAFE',
             warnings: withheldWarnings(violations),
@@ -121,10 +124,19 @@ export function createDiagnosisAgentNode(llmAdapter: LLMAdapter) {
         vehicleLine: vehicleLineOf(state),
       })
 
+      // Bugfix 7B: split by audience (deterministic; moves, never drops) and add the fixed driver
+      // clarifications / mechanic-directed questions. outputSafetyGuard scans both lists next.
+      const arranged = arrangeSymptomQuestions({
+        userText: state.userText ?? '',
+        workshopQuestions: refined.questions,
+        driverQuestions: refined.driverQuestions ?? [],
+      })
+
       return {
         facts: refined.facts,
         hypotheses: refined.hypotheses,
-        questions: refined.questions,
+        questions: arranged.workshopQuestions,
+        driverQuestions: arranged.driverQuestions,
         traces: [
           createTrace(caseId, NODE_ID, startTime, 'success', {
             llmCalled: true,

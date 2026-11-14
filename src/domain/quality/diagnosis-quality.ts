@@ -25,6 +25,8 @@ export interface DiagnosisCandidate {
   facts: string[]
   hypotheses: Array<{ statement: string; confidence: Confidence; caveats: string[]; evidenceIds: string[] }>
   questions: string[]
+  /** Bugfix 7B: clarifying questions for the driver (optional for older callers). */
+  driverQuestions?: string[]
 }
 
 export interface QualityContext {
@@ -135,11 +137,14 @@ export function refineDiagnosisOutput(
     return { ...h, statement, confidence, caveats }
   }).filter((h) => h.statement.length > 0)
 
-  const questions = candidate.questions.filter((q) => {
-    const keep = !INTERNAL_LABEL.test(q)
-    if (!keep) report.removedInternalLabels++
-    return keep
-  })
+  const dropLabels = (list: readonly string[]) =>
+    list.filter((q) => {
+      const keep = !INTERNAL_LABEL.test(q)
+      if (!keep) report.removedInternalLabels++
+      return keep
+    })
+  const questions = dropLabels(candidate.questions)
+  const driverQuestions = dropLabels(candidate.driverQuestions ?? [])
 
-  return { output: { facts, hypotheses, questions }, report }
+  return { output: { facts, hypotheses, questions, driverQuestions }, report }
 }
