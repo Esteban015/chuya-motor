@@ -107,6 +107,8 @@ function sanitizeOutput(output: AnalyzeOutput, userText: string, processing: Pro
     missingInformation: output.missingInformation,
     fallback: output.fallback,
     fallbackText: output.fallbackText,
+    // 7E: AI failed, deterministic budget results kept (rendered with a separate AI notice).
+    aiUnavailable: output.aiUnavailable ?? false,
     // Server-side production guard: traces are never sent to client in production.
     // The check is here (server), not in the client component.
     nodeTrace: isDev ? safeTraces : null,

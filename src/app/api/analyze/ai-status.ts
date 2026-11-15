@@ -7,6 +7,7 @@
  *   simulated   → the stub answered (demo mode)
  *   withheld    → the AI answered but the output safety validator withheld it (D-05)
  *   unavailable → no usable AI answer: visitor limit, daily quota, busy, disabled, provider error
+ *                 (7E: also when deterministic budget results are shown without the AI)
  *   none        → no generative step ran
  * Precedence: withheld > unavailable (fallback) > ai / simulated > none. A failed real call is
  * never labeled "simulated": there is no fallback to the stub.
@@ -18,10 +19,11 @@ import type { AiStatus } from './schema'
 
 export function deriveAiStatus(
   snapshot: ProcessingSnapshot,
-  output: { fallback: boolean; warnings: readonly string[] },
+  output: { fallback: boolean; warnings: readonly string[]; aiUnavailable?: boolean },
 ): AiStatus {
   if (output.warnings.includes(OUTPUT_WITHHELD_WARNING)) return { mode: 'withheld' }
-  if (output.fallback) {
+  // 7E: aiUnavailable = the AI failed but deterministic results were kept: still "unavailable".
+  if (output.fallback || output.aiUnavailable) {
     return { mode: 'unavailable', reason: snapshot.attempts === 0 ? 'provider_error' : unavailableReasonFor(snapshot.lastErrorCode) }
   }
   if (snapshot.succeeded > 0) return { mode: snapshot.kind === 'stub' ? 'simulated' : 'ai' }

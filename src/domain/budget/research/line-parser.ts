@@ -24,6 +24,10 @@ export interface ParseResult {
   truncated: boolean
   /** Lines whose amount could not be read unambiguously (1-based). */
   unreadableAmountLines: number[]
+  /** 7E (additive): the non-empty source lines, whitespace-collapsed; line N = sourceLines[N - 1]. */
+  sourceLines: string[]
+  /** 7E (additive): every "Total" line (not "Subtotal") in order; amount null when unreadable. */
+  totalLines: Array<{ line: number; amountMinor: number | null }>
 }
 
 /** Control, zero-width and bidirectional-override characters are removed (malformed / spoofed input). */
@@ -106,11 +110,13 @@ export function parseResearchLines(text: string, options: ParseOptions): ParseRe
   let declaredTotalMinor: number | null = null
   const unreadableAmountLines: number[] = []
   let truncated = false
+  const totalLines: ParseResult['totalLines'] = []
 
   rawLines.forEach((raw, i) => {
     const total = TOTAL_LINE.exec(raw)
     if (total) {
       const amount = parseArsAmount(total[2] ?? '')
+      if (!total[1]) totalLines.push({ line: i + 1, amountMinor: amount })
       if (amount !== null && !total[1]) declaredTotalMinor = amount
       return
     }
@@ -153,5 +159,5 @@ export function parseResearchLines(text: string, options: ParseOptions): ParseRe
     })
   })
 
-  return { lines, declaredTotalMinor, truncated, unreadableAmountLines }
+  return { lines, declaredTotalMinor, truncated, unreadableAmountLines, sourceLines: rawLines, totalLines }
 }

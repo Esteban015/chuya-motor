@@ -6,7 +6,8 @@ interface FallbackAlertProps {
   aiStatus?: AiStatus
 }
 
-function contentFor(aiStatus: AiStatus | undefined, fallbackText: string | null): { title: string; body: string | null } {
+/** Fixed AI-status texts (shared by FallbackAlert and the 7E budget AI notice). */
+export function contentFor(aiStatus: AiStatus | undefined, fallbackText: string | null): { title: string; body: string | null } {
   if (aiStatus?.mode === 'withheld') {
     return { title: 'Respuesta retenida por seguridad', body: 'La orientación generada no superó la validación de seguridad y no se muestra.' }
   }
