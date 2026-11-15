@@ -129,3 +129,29 @@ describe('SEL-03: unknown year / engine and manual mode', () => {
     expect(selectionToVehicleInfo(esp).engine).toBeUndefined()
   })
 })
+
+describe('SEL-04 (7D.3): clearing a searchable field resets its dependents', () => {
+  it('clearing the brand clears model, year and version and announces it', () => {
+    const s = r(full(), { type: 'clear', field: 'brand' })
+    expect(s).toMatchObject({ type: auto, brand: null, model: null, year: null, yearUnknown: false, version: null, versionUnknown: false })
+    expect(s.announcement).toBe('Se borraron la marca, el modelo, el año y la versión.')
+  })
+
+  it('clearing the model keeps the brand; clearing the version keeps model and year', () => {
+    const m = r(full(), { type: 'clear', field: 'model' })
+    expect(m).toMatchObject({ brand: ficticia, model: null, year: null, version: null })
+    expect(m.announcement).toBe('Se borraron el modelo, el año y la versión.')
+    const v = r(full(), { type: 'clear', field: 'version' })
+    expect(v).toMatchObject({ brand: ficticia, model: sedanA, year: 2017, version: null, versionUnknown: false })
+    expect(v.announcement).toBe('Se borró la versión.')
+    const vu = r(run({ type: 'selectType', value: auto }, { type: 'selectBrand', value: ficticia }, { type: 'selectModel', value: sedanA }, { type: 'versionUnknown' }), { type: 'clear', field: 'version' })
+    expect(vu.versionUnknown).toBe(false)
+  })
+
+  it('clearing an empty field or in manual mode is a no-op', () => {
+    const s = run({ type: 'selectType', value: auto })
+    expect(r(s, { type: 'clear', field: 'brand' })).toBe(s)
+    const manual = r(full(), { type: 'switchToManual' })
+    expect(r(manual, { type: 'clear', field: 'brand' })).toBe(manual)
+  })
+})

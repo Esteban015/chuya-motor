@@ -41,16 +41,33 @@ function Harness({ loader, askVersion = true }: { loader: CatalogLoader; askVers
   return <VehicleSelector state={state} dispatch={dispatch} loader={loader} askVersion={askVersion} typeRequired />
 }
 
-const optionLabels = (select: HTMLElement) => within(select).getAllByRole('option').map((o) => o.textContent)
-const brandSelect = () => screen.getByLabelText('Marca', { selector: 'select' })
-const modelSelect = () => screen.getByLabelText('Modelo', { selector: 'select' })
-const yearSelect = () => screen.getByLabelText(/^Año/, { selector: 'select' })
-const versionSelect = () => screen.getByLabelText('Versión / motor', { selector: 'select' })
+// 7D.3: Marca, Modelo and Versión are single searchable comboboxes; Año stays a native select.
+const isSelect = (el: HTMLElement): el is HTMLSelectElement => el.tagName === 'SELECT'
+const listboxOf = (combo: HTMLElement) => document.getElementById(combo.getAttribute('aria-controls')!) as HTMLElement
+const comboOptions = (combo: HTMLElement) => Array.from(listboxOf(combo).querySelectorAll<HTMLElement>('[role="option"]'))
+/** Option labels of a select, or of a combobox (opened, read, closed again). */
+function optionLabels(control: HTMLElement): string[] {
+  if (isSelect(control)) return within(control).getAllByRole('option').map((o) => o.textContent ?? '')
+  if (control.getAttribute('aria-expanded') !== 'true') fireEvent.click(control)
+  const labels = comboOptions(control).map((o) => o.textContent ?? '')
+  fireEvent.keyDown(control, { key: 'Escape' })
+  return labels
+}
+const brandSelect = () => screen.getByRole('combobox', { name: 'Marca' }) as HTMLInputElement
+const modelSelect = () => screen.getByRole('combobox', { name: 'Modelo' }) as HTMLInputElement
+const yearSelect = () => screen.getByLabelText(/^Año/, { selector: 'select' }) as HTMLSelectElement
+const versionSelect = () => screen.getByRole('combobox', { name: 'Versión / motor' }) as HTMLInputElement
 
-async function pick(select: () => HTMLElement, label: string) {
-  await waitFor(() => expect(optionLabels(select())).toContain(label))
-  const opt = within(select()).getAllByRole('option').find((o) => o.textContent === label) as HTMLOptionElement
-  fireEvent.change(select(), { target: { value: opt.value } })
+async function pick(control: () => HTMLElement, label: string) {
+  await waitFor(() => expect(optionLabels(control())).toContain(label))
+  const el = control()
+  if (isSelect(el)) {
+    const opt = within(el).getAllByRole('option').find((o) => o.textContent === label) as HTMLOptionElement
+    fireEvent.change(el, { target: { value: opt.value } })
+    return
+  }
+  fireEvent.click(el)
+  fireEvent.click(comboOptions(el).find((o) => o.textContent === label)!)
 }
 
 async function chooseType(label: string) {
@@ -61,16 +78,16 @@ describe('VS-01: dependent options per type', () => {
   it('Moto → only motorcycle brands and models', async () => {
     render(<Harness loader={loaderFor()} />)
     await chooseType('Moto')
-    await waitFor(() => expect(optionLabels(brandSelect())).toEqual(['Elegí la marca', 'Ejemplo Motors', 'Prueba Motos']))
+    await waitFor(() => expect(optionLabels(brandSelect())).toEqual(['Ejemplo Motors', 'Prueba Motos']))
     await pick(brandSelect, 'Ejemplo Motors')
-    await waitFor(() => expect(optionLabels(modelSelect())).toEqual(['Elegí el modelo', 'Moto M 150']))
+    await waitFor(() => expect(optionLabels(modelSelect())).toEqual(['Moto M 150']))
   })
 
   it('Auto → car brands; the same brand only shows its car models', async () => {
     render(<Harness loader={loaderFor()} />)
     await chooseType('Auto')
     await pick(brandSelect, 'Ejemplo Motors')
-    await waitFor(() => expect(optionLabels(modelSelect())).toEqual(['Elegí el modelo', 'Hatch E']))
+    await waitFor(() => expect(optionLabels(modelSelect())).toEqual(['Hatch E']))
   })
 
   it('discontinued models are shown and labelled', async () => {
@@ -83,10 +100,10 @@ describe('VS-01: dependent options per type', () => {
   it('dependent controls are disabled until their parent is chosen', async () => {
     render(<Harness loader={loaderFor()} />)
     await screen.findByRole('radio', { name: 'Auto' })
-    expect((brandSelect() as HTMLSelectElement).disabled).toBe(true)
-    expect((modelSelect() as HTMLSelectElement).disabled).toBe(true)
-    expect((yearSelect() as HTMLSelectElement).disabled).toBe(true)
-    expect((versionSelect() as HTMLSelectElement).disabled).toBe(true)
+    expect(brandSelect().disabled).toBe(true)
+    expect(modelSelect().disabled).toBe(true)
+    expect(yearSelect().disabled).toBe(true)
+    expect(versionSelect().disabled).toBe(true)
   })
 })
 
@@ -97,8 +114,8 @@ describe('VS-02: resets of dependent fields', () => {
     await pick(brandSelect, 'Ejemplo Motors')
     await pick(modelSelect, 'Hatch E')
     await chooseType('Moto')
-    await waitFor(() => expect((brandSelect() as HTMLSelectElement).value).toBe(''))
-    expect((modelSelect() as HTMLSelectElement).value).toBe('')
+    await waitFor(() => expect(brandSelect().value).toBe(''))
+    expect(modelSelect().value).toBe('')
     expect(screen.getByTestId('vehicle-selector-live').textContent).toContain('Se borraron la marca y el modelo porque cambiaste el tipo de vehículo.')
   })
 
@@ -111,8 +128,8 @@ describe('VS-02: resets of dependent fields', () => {
     await pick(versionSelect, '1.4 8V Nafta · Sedan 5 puertas')
     await pick(brandSelect, 'Ejemplo Motors')
     expect(lastState).toMatchObject({ model: null, year: null, version: null })
-    expect((yearSelect() as HTMLSelectElement).value).toBe('')
-    expect((versionSelect() as HTMLSelectElement).value).toBe('')
+    expect(yearSelect().value).toBe('')
+    expect(versionSelect().value).toBe('')
   })
 })
 
@@ -123,9 +140,9 @@ describe('VS-03: unknown year / engine and versions', () => {
     await pick(brandSelect, 'Ficticia Autos')
     await pick(modelSelect, 'Sedán A')
     await pick(yearSelect, '2024')
-    await waitFor(() => expect(optionLabels(versionSelect())).toEqual(['Elegí la versión', '1.6 Turbodiésel · Sedan 5 puertas', 'Edición Especial · motor no informado', 'No conozco el motor ni la versión']))
+    await waitFor(() => expect(optionLabels(versionSelect())).toEqual(['1.6 Turbodiésel · Sedan 5 puertas', 'Edición Especial · motor no informado', 'No conozco el motor ni la versión']))
     await pick(yearSelect, 'No sé el año')
-    await waitFor(() => expect(optionLabels(versionSelect())).toHaveLength(6))
+    await waitFor(() => expect(optionLabels(versionSelect())).toHaveLength(5))
     await pick(versionSelect, 'No conozco el motor ni la versión')
     expect(selectionToApiVehicle(lastState).catalog).toMatchObject({ yearUnknown: true, engineUnknown: true })
   })
@@ -215,7 +232,7 @@ describe('VS-05: manual alternative clearly marked as not verified', () => {
     expect(screen.getByRole('alert').textContent).toContain('El año debe estar entre 1900 y 2100.')
     expect(selectionToApiVehicle(lastState).catalog).toBeUndefined()
     fireEvent.click(screen.getByRole('button', { name: 'Volver a elegir de la lista' }))
-    expect(await screen.findByLabelText('Marca', { selector: 'select' })).toBeTruthy()
+    expect(await screen.findByRole('combobox', { name: 'Marca' })).toBeTruthy()
   })
 })
 
@@ -225,17 +242,107 @@ describe('VS-06: test data never poses as the Argentine catalog; accessibility',
     expect((await screen.findByTestId('vehicle-catalog-fixture-note')).textContent).toContain('no representan vehículos reales ni el mercado argentino')
   })
 
-  it('type options form a labelled radio group; long lists get a labelled search box', async () => {
+  it('type options form a labelled radio group; long lists are searched inside the same field', async () => {
     const big: CatalogDataset = JSON.parse(JSON.stringify(FIXTURE_CATALOG))
     for (let i = 0; i < 10; i++) big.brands.push({ id: `b:extra-${i}`, name: `Marca Ficticia ${i}`, aliases: [], typeIds: ['t:auto'] })
     render(<Harness loader={loaderFor(big)} />)
     const group = await screen.findByRole('group', { name: /Tipo de vehículo/ })
     expect(within(group).getAllByRole('radio')).toHaveLength(7)
     await chooseType('Auto')
-    const search = await screen.findByLabelText('Buscar marca')
-    fireEvent.change(search, { target: { value: 'ficticia 3' } })
-    await waitFor(() => expect(optionLabels(brandSelect())).toEqual(['Elegí la marca', 'Marca Ficticia 3']))
-    expect(screen.getByText('1 resultados')).toBeTruthy()
+    await waitFor(() => expect(brandSelect().disabled).toBe(false))
+    expect(screen.queryByLabelText('Buscar marca')).toBeNull()
+    fireEvent.change(brandSelect(), { target: { value: 'ficticia 3' } })
+    expect(comboOptions(brandSelect()).map((o) => o.textContent)).toEqual(['Marca Ficticia 3'])
+    expect(screen.getByText('1 resultado')).toBeTruthy()
+  })
+})
+
+describe('VS-10 (7D.3): one control per datum (search and choose in the same field)', () => {
+  it('catalog mode: Marca, Modelo and Versión are comboboxes; Año is the only select; no search boxes', async () => {
+    render(<Harness loader={loaderFor()} />)
+    await chooseType('Auto')
+    await pick(brandSelect, 'Ficticia Autos')
+    await pick(modelSelect, 'Sedán A')
+    await pick(yearSelect, '2017')
+    const root = screen.getByTestId('vehicle-selector')
+    expect(within(root).getAllByRole('combobox').map((c) => c.tagName)).toEqual(['INPUT', 'INPUT', 'SELECT', 'INPUT'])
+    expect(root.querySelectorAll('select')).toHaveLength(1)
+    expect(root.querySelectorAll('input[type="search"]')).toHaveLength(0)
+    expect(within(root).queryAllByLabelText(/^Buscar /)).toHaveLength(0)
+    expect(brandSelect().value).toBe('Ficticia Autos')
+    expect(modelSelect().value).toBe('Sedán A')
+  })
+
+  it('keyboard only: type, arrows and Enter choose brand, model and version; IDs never shown', async () => {
+    render(<Harness loader={loaderFor()} />)
+    await chooseType('Auto')
+    await waitFor(() => expect(brandSelect().disabled).toBe(false))
+    fireEvent.change(brandSelect(), { target: { value: 'fictícia' } })
+    fireEvent.keyDown(brandSelect(), { key: 'ArrowDown' })
+    fireEvent.keyDown(brandSelect(), { key: 'Enter' })
+    expect(lastState.brand?.id).toBe('b:ficticia-autos')
+    expect(brandSelect().value).toBe('Ficticia Autos')
+    await waitFor(() => expect(modelSelect().disabled).toBe(false))
+    fireEvent.change(modelSelect(), { target: { value: 'sedan' } })
+    fireEvent.keyDown(modelSelect(), { key: 'Enter' })
+    expect(lastState.model?.id).toBe('m:ficticia-sedan-a')
+    await pick(yearSelect, '2017')
+    await waitFor(() => expect(versionSelect().disabled).toBe(false))
+    versionSelect().focus()
+    fireEvent.change(versionSelect(), { target: { value: 'nafta' } })
+    fireEvent.keyDown(versionSelect(), { key: 'ArrowDown' })
+    fireEvent.keyDown(versionSelect(), { key: 'Enter' })
+    expect(lastState.version?.id).toBe('v:sedan-a-14-nafta')
+    expect(versionSelect().value).toBe('1.4 8V Nafta · Sedan 5 puertas')
+  })
+
+  it('clear (×) on the brand resets model, year and version and announces it', async () => {
+    render(<Harness loader={loaderFor()} />)
+    await chooseType('Auto')
+    await pick(brandSelect, 'Ficticia Autos')
+    await pick(modelSelect, 'Sedán A')
+    await pick(yearSelect, '2017')
+    await pick(versionSelect, '1.4 8V Nafta · Sedan 5 puertas')
+    fireEvent.click(screen.getByRole('button', { name: 'Borrar marca' }))
+    expect(lastState).toMatchObject({ brand: null, model: null, year: null, version: null })
+    expect(brandSelect().value).toBe('')
+    await waitFor(() => expect(modelSelect().disabled).toBe(true))
+    expect(screen.getByTestId('vehicle-selector-live').textContent).toBe('Se borraron la marca, el modelo, el año y la versión.')
+  })
+
+  it('reopening the model and choosing another resets year and version', async () => {
+    render(<Harness loader={loaderFor()} />)
+    await chooseType('Auto')
+    await pick(brandSelect, 'Ficticia Autos')
+    await pick(modelSelect, 'Sedán A')
+    await pick(yearSelect, '2017')
+    await pick(modelSelect, 'Compacto B (ya no se fabrica)')
+    expect(lastState).toMatchObject({ year: null, version: null })
+    expect(modelSelect().value).toBe('Compacto B (ya no se fabrica)')
+  })
+
+  it('no matches → message inside the list; "No conozco el motor" is still offered', async () => {
+    render(<Harness loader={loaderFor()} />)
+    await chooseType('Auto')
+    await pick(brandSelect, 'Ficticia Autos')
+    await pick(modelSelect, 'Sedán A')
+    await pick(yearSelect, '2017')
+    await waitFor(() => expect(versionSelect().disabled).toBe(false))
+    fireEvent.change(versionSelect(), { target: { value: 'zzz' } })
+    expect(screen.getByText('Ninguna versión coincide con lo que escribiste.')).toBeTruthy()
+    expect(comboOptions(versionSelect()).map((o) => o.textContent)).toEqual(['No conozco el motor ni la versión'])
+  })
+
+  it('while a level loads its field says so', async () => {
+    let release: () => void = () => {}
+    const base = loaderFor()
+    const slow: CatalogLoader = (q, s) => (q.level === 'brands' ? new Promise((res) => { release = () => res(base(q, s)) }) : base(q, s))
+    render(<Harness loader={slow} />)
+    await chooseType('Auto')
+    await waitFor(() => expect(brandSelect().getAttribute('aria-busy')).toBe('true'))
+    expect(brandSelect().placeholder).toBe('Cargando marcas…')
+    release()
+    await waitFor(() => expect(brandSelect().disabled).toBe(false))
   })
 })
 
