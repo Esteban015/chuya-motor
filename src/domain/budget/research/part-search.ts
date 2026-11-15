@@ -3,7 +3,8 @@
  *
  * - Only identifying data: part description (cleaned), part brand / code if given, vehicle make,
  *   model, engine, year and "Argentina". Never the full free text of the quote.
- * - Prices, plates, e-mails and phone numbers are removed from the description.
+ * - Prices, plates, e-mails and phone numbers are removed from the description; plates and phone
+ *   numbers also from the vehicle fields (typed by hand in manual mode).
  * - HTTPS Google search URL built with encodeURIComponent. Chuya Motor never opens, scrapes or
  *   reads the results: the person opens them in a new tab; results are external and unverified.
  */
@@ -18,6 +19,7 @@ const EMAIL = /\S+@\S+/g
 // old "ABC123" / Mercosur "AB123CD" formats. Lower-case alphanumerics are kept (often part codes).
 const PLATE_LABELED = /\b(?:patente|dominio)\b\s*:?\s*(?:[a-z]{2,3}\s?\d{3}(?:\s?[a-z]{2})?)?/gi
 const PLATE_CAPS = /\b[A-Z]{3}\d{3}\b|\b[A-Z]{2}\d{3}[A-Z]{2}\b/g
+const PLATE_MERCOSUR = /\b[A-Z]{2}\s?\d{3}\s?[A-Z]{2}\b/g
 const PHONE = /\+?\d[\d\s-]{6,}\d/g
 const CONTROL = /[\u0000-\u001f\u007f<>"`]/g
 
@@ -47,6 +49,18 @@ function sanitizeField(text: string | undefined, max = 40): string {
     .trim()
 }
 
+/**
+ * Vehicle make / model / engine (7C public pilot): typed by hand in manual mode, so they get the
+ * personal-data filters too. Plates in both formats and phone numbers are removed from make and
+ * engine; the model keeps the old "ABC123" shape (real models such as CBR600 or XRE300) and only
+ * loses Mercosur plates. Part codes are NOT filtered this way (codes may look like plates).
+ */
+function sanitizeVehicleField(text: string | undefined, kind: 'make' | 'model' | 'engine' | 'year'): string {
+  let t = (text ?? '').slice(0, 40).replace(PHONE, ' ')
+  t = kind === 'model' ? t.replace(PLATE_MERCOSUR, ' ') : t.replace(PLATE_CAPS, ' ').replace(PLATE_MERCOSUR, ' ')
+  return sanitizeField(t)
+}
+
 function clip(text: string, max: number): string {
   if (text.length <= max) return text
   const cut = text.slice(0, max)
@@ -68,8 +82,14 @@ export interface PartSearch {
 
 export function buildPartSearch(input: PartSearchInput): PartSearch {
   const v = input.vehicle
-  const tail = [input.partBrand, input.partCode, v.make, v.model, v.engine, v.year]
-    .map((t) => sanitizeField(t))
+  const tail = [
+    sanitizeField(input.partBrand),
+    sanitizeField(input.partCode),
+    sanitizeVehicleField(v.make, 'make'),
+    sanitizeVehicleField(v.model, 'model'),
+    sanitizeVehicleField(v.engine, 'engine'),
+    sanitizeVehicleField(v.year, 'year'),
+  ]
     .filter(Boolean)
     .concat('Argentina')
     .join(' ')

@@ -1,5 +1,7 @@
 # Incremento 7C — Runbook del piloto interno de precios automáticos
 
+> **Actualizado por el piloto público** (`docs/reviews/parts-pricing-public-pilot-7c.md`): presupuesto atómico en una sola operación, ventana móvil de 31 días en lugar del mes calendario, tope horario, contadores por cuenta de SerpApi y kill switch sin redeploy. Donde este runbook difiera, manda el documento del piloto público.
+
 Fecha: 14/11/2026 · Rama: `feature/automatic-parts-pricing` · Estado: **listo para piloto interno; no habilitado en ningún entorno**.
 
 > Este documento no contiene claves, tokens ni URLs con credenciales. Solo nombres de variables.
@@ -28,7 +30,8 @@ Fecha: 14/11/2026 · Rama: `feature/automatic-parts-pricing` · Estado: **listo 
 | `PARTS_PRICING_DAILY_SEARCH_BUDGET` | Sugerido: `10` | Sugerido: `20` |
 | `PARTS_PRICING_MONTHLY_SEARCH_BUDGET` | Sugerido: `50` | 200 por defecto (plan Free = 250) |
 | `PARTS_PRICING_ALLOW_PUBLIC_PRODUCTION` | **No configurar** | **No configurar** |
-| `LLM_QUOTA_KEY_PREFIX` | Opcional: un prefijo propio separa los contadores del piloto de los de producción si se usa la misma base Upstash | Ídem |
+| `PARTS_PRICING_HOURLY_SEARCH_BUDGET` | 40 por defecto (plan Free: 50/hora) | 40 por defecto |
+| `LLM_QUOTA_KEY_PREFIX` | Separa rate limit y caché, **no** el presupuesto de SerpApi: desde el piloto público los contadores de búsquedas pertenecen a la cuenta de SerpApi (huella de la key) y se comparten entre entornos que usen la misma key y la misma base Upstash | Ídem |
 
 Las cuotas cuentan **búsquedas facturadas**, es decir las que no salen de la caché. Una consulta con 3 repuestos son como mucho 3 búsquedas.
 

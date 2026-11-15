@@ -103,6 +103,11 @@ export class UpstashPricingCache implements PricingCache {
     return parseCached(await this.#exec(['GET', key]))
   }
 
+  /** Read-only existence check (preflight: kill switch state). */
+  async exists(key: string): Promise<boolean> {
+    return Number(await this.#exec(['EXISTS', key])) > 0
+  }
+
   async set(key: string, value: ProviderResult, ttlMs: number): Promise<void> {
     await this.#exec(['SET', key, JSON.stringify(cacheable(value)), 'PX', ttlMs])
   }

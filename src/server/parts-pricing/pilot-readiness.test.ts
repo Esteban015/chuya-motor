@@ -15,6 +15,7 @@ import { createPricingService } from './pricing-service'
 import { buildDiscardAudit } from './discard-audit'
 import { evaluateMatch } from './matching'
 import { createSerpApiProvider } from './serpapi-provider'
+import { searchBudgetKeys } from './search-budget'
 import type { FetchLike, PriceOffer, PriceProvider, PriceQuery } from './types'
 
 const PROD = { PARTS_PRICING_ENABLED: 'true', NODE_ENV: 'production', LLM_QUOTA_STORE: 'memory' }
@@ -72,8 +73,8 @@ describe('PR-02 distributed store (Upstash REST double): atomic quotas across in
     const bodies = await Promise.all(runs.map(async (r) => (await r).json()))
     expect(p.search).toHaveBeenCalledTimes(5)
     expect(bodies.filter((b) => b.items[0].reason === 'quota_exceeded')).toHaveLength(5)
-    const day = Math.floor(Date.now() / 86_400_000)
-    expect(await instA.get(`chuya:pp:d:${day}`)).toBe(5)
+    // Budget counters belong to the provider account (search-budget.ts), not to the LLM key prefix.
+    expect(await instA.get(searchBudgetKeys('serpapi', 'any', Date.now()).windowDays[0]!)).toBe(5)
   })
 
   it('shared cache: a search done by instance A is reused by instance B (new process memory) — no new search, no budget', async () => {

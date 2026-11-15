@@ -6,7 +6,7 @@
  * Network latency is simulated with a random delay BEFORE execution, so concurrent clients
  * interleave at the command level exactly as real serverless instances would.
  */
-import { ADJUST_SCRIPT, METRIC_SCRIPT, RESERVE_SCRIPT } from './upstash-quota-store'
+import { ADJUST_SCRIPT, METRIC_SCRIPT, RESERVE_ALL_SCRIPT, RESERVE_SCRIPT } from './upstash-quota-store'
 
 interface Value {
   v: string | Map<string, number>
@@ -88,6 +88,29 @@ export class FakeUpstash {
         return [...e.v.entries()].flatMap(([k, v]) => [k, String(v)])
       }
       case 'EVAL': {
+        if (a[0] === RESERVE_ALL_SCRIPT) {
+          // Same semantics as the Lua script; runs to completion like Redis.
+          const numKeys = Number(a[1])
+          const keys = a.slice(2, 2 + numKeys).map(String)
+          const argv = a.slice(2 + numKeys).map(Number)
+          let p = 0
+          const nChecks = argv[p++]!
+          for (let c = 0; c < nChecks; c++) {
+            const n = argv[p++]!
+            const limit = argv[p++]!
+            let sum = 0
+            for (let i = 0; i < n; i++) sum += this.#num(keys[argv[p++]! - 1]!)
+            if (sum + 1 > limit) return [0, c]
+          }
+          const nInc = argv[p++]!
+          for (let i = 0; i < nInc; i++) {
+            const k = keys[argv[p++]! - 1]!
+            const ttl = argv[p++]!
+            this.#incrby(k, 1)
+            if (this.#pttl(k) < 0) this.#expire(k, ttl)
+          }
+          return [1, -1]
+        }
         const [script, , key, ...args] = a
         const k = String(key)
         if (script === RESERVE_SCRIPT) {

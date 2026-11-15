@@ -6,11 +6,13 @@
  *   2. Content-Type, body size, JSON, strict Zod schema (unknown keys rejected: the client cannot
  *      pass flags, providers, URLs or budgets).
  *   3. Per-client request rate (hashed IP; shared store, per-instance fallback).
- *   4. Provider configured? (PARTS_PRICING_PROVIDER + server credential) else status "disabled".
+ *   4. Provider configured? (PARTS_PRICING_PROVIDER + server credential) and runtime kill switch
+ *      (Upstash flag, no redeploy needed) not set? else status "disabled".
  *   5. Per part: server-side identification (labor / other concepts are never searched), the 7B
  *      safety screen (unchanged Safety Gate), per-process + shared cache, in-flight de-duplication,
- *      and — only on a cache miss — the search budget: per client per day, global per day and per
- *      month. Production without a distributed store → fail closed (no provider call).
+ *      and — only on a cache miss — ONE atomic reservation of the search budget (search-budget.ts):
+ *      per client per day, per SerpApi account per hour / day / rolling 31 days. Production
+ *      without a distributed store → fail closed (no provider call).
  * The response carries only validated offers, decisions and "missing data" codes: never the API
  * key, provider diagnostics, request URLs, or any price difference / average / verdict.
  */
@@ -23,6 +25,7 @@ import { clientKeyFor, resolveClientIp } from '@/server/llm-protection/client-id
 import { readPartsPricingConfig, type PartsPricingConfig } from './pricing-config'
 import { PRICING_LIMITS, createPricingService, type PricedItem, type SearchGate } from './pricing-service'
 import { selectPriceProvider } from './provider-registry'
+import { createSearchGate, isPricingKillSwitchOn } from './search-budget'
 import { MemoryPricingCache, UpstashPricingCache, type PricingCache } from './shared-cache'
 import type { ClientOffer, ClientPricedItem, MissingData, PartsPricesResponse } from '@/domain/budget/research/parts-prices-contract'
 import type { PriceProvider } from './types'
@@ -31,7 +34,7 @@ if (typeof window !== 'undefined') throw new Error('parts-pricing is server-only
 
 export const MAX_BODY_BYTES = 8_192
 const HOUR_MS = 3_600_000
-const DAY_MS = 86_400_000
+
 
 const optText = (max: number) => z.string().max(max).optional()
 
@@ -213,32 +216,19 @@ export async function handlePartsPricesRequest(req: Request, deps: HandlerDeps =
   // 4. Provider (server env only).
   const provider = deps.provider !== undefined ? deps.provider : selectPriceProvider(env)
   if (!provider) return json(200, { status: 'disabled' })
+  // Runtime kill switch in the shared store (takes effect immediately, no redeploy).
+  if (await isPricingKillSwitchOn(store)) return json(200, { status: 'disabled' })
 
-  // 5. Search budget gate — runs only before a billed search (cache miss).
-  const day = Math.floor(now() / DAY_MS)
-  const d = new Date(now())
-  const month = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`
-  const gate: SearchGate = async () => {
-    if (!store || (cfg.requireDistributedStore && !store.distributed)) return { ok: false, reason: 'store_unavailable' }
-    const steps: Array<[string, number, number]> = [
-      [`${prefix}:pp:cd:${clientKey}:${day}`, cfg.clientDailySearches, DAY_MS],
-      [`${prefix}:pp:d:${day}`, cfg.dailySearchBudget, DAY_MS],
-      [`${prefix}:pp:m:${month}`, cfg.monthlySearchBudget, 32 * DAY_MS],
-    ]
-    const taken: Array<[string, number]> = []
-    try {
-      for (const [key, limit, ttl] of steps) {
-        if (!(await store.reserve(key, 1, limit, ttl)).ok) {
-          for (const [k, t] of taken) await store.adjust(k, -1, t)
-          return { ok: false, reason: 'quota_exceeded' }
-        }
-        taken.push([key, ttl])
-      }
-    } catch {
-      return { ok: false, reason: 'store_unavailable' }
-    }
-    return { ok: true }
-  }
+  // 5. Search budget gate — runs only before a billed search (cache miss). One atomic reservation
+  //    per search across every limit, charged to the provider account (search-budget.ts).
+  const gate: SearchGate = createSearchGate({
+    store,
+    limits: cfg,
+    clientKey,
+    account: provider.budgetAccount ?? provider.id,
+    now,
+    requireDistributed: cfg.requireDistributedStore,
+  })
 
   const cache = deps.cache ?? sharedCacheFor(llm)
   const service = deps.provider !== undefined || deps.cache ? createPricingService({ provider, sharedCache: cache, cacheKeyPrefix: prefix }) : serviceFor(provider, cache, prefix)

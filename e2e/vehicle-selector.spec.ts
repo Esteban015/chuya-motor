@@ -279,6 +279,39 @@ test.describe('VSE real catalog (DNRPA, vigencia 01/11/2026)', () => {
     expect(analyze.at(-1)!['vehicle']).toMatchObject({ make: 'Fiat', model: 'Palio', year: 2017, catalog: { modelId: 'm:fiat-palio' } })
   })
 
+  test('VSE-13 7D → 7C: the selected vehicle reaches the automatic search exactly as documented (no invented fuel)', async ({ page }) => {
+    const bodies: Array<Record<string, unknown>> = []
+    await page.route('**/api/budget/parts-prices', async (route) => {
+      bodies.push(route.request().postDataJSON())
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok', provider: 'serpapi', truncated: false, items: [{ lineId: 'l1', status: 'no_results', offers: [], hidden: 0 }] }) })
+    })
+    await page.goto('/demo/presupuesto')
+    await page.getByRole('tab', { name: /Consultar repuestos/ }).click()
+    await page.fill('#partsText', 'Filtro de aire')
+    await page.getByRole('radio', { name: 'Pick-up' }).check()
+    await choose(page, brand(page), 'Marca', 'Toyota', 'toyota')
+    await choose(page, model(page), 'Modelo', 'Hilux', 'hilux')
+    await year(page).selectOption('2020')
+    await version(page).click()
+    await version(page).fill('2.8 tdi')
+    await listbox(page, 'Versión / motor').getByRole('option').first().click()
+    await page.getByRole('button', { name: 'Preparar búsqueda' }).click()
+    await page.getByTestId('auto-pricing-panel').getByRole('button', { name: 'Buscar publicaciones' }).click()
+    await expect(page.getByTestId('auto-results')).toBeVisible()
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]!['vehicle']).toEqual({ make: 'Toyota', model: 'Hilux', year: '2020', engine: '2.8 diesel' })
+
+    // Palio FIRE: the source does not state the fuel → only the displacement is sent.
+    await page.goto('/demo/presupuesto')
+    await page.getByRole('tab', { name: /Consultar repuestos/ }).click()
+    await page.fill('#partsText', 'Filtro de aire')
+    await pickPalio2017(page)
+    await page.getByRole('button', { name: 'Preparar búsqueda' }).click()
+    await page.getByTestId('auto-pricing-panel').getByRole('button', { name: 'Buscar publicaciones' }).click()
+    await expect(page.getByTestId('auto-results')).toBeVisible()
+    expect(bodies[1]!['vehicle']).toEqual({ make: 'Fiat', model: 'Palio', year: '2017', engine: '1.4' })
+  })
+
   for (const width of [390, 320]) {
     test(`VSE-10 mobile ${width}: no overflow, 44px targets, dropdown inside the field width, touch`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 })
