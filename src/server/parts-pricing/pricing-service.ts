@@ -17,6 +17,7 @@ import { evaluateMatch, type MatchResult } from './matching'
 import { buildProviderQuery } from './query'
 import { pricingCacheKey, type PricingCache } from './shared-cache'
 import { buildDiscardAudit, type DiscardAudit } from './discard-audit'
+import type { CacheOutcome, PricingSearchListener } from './search-telemetry'
 import type { PriceOffer, PriceProvider, PriceQuery, ProviderDiagnostics, ProviderId, ProviderResult } from './types'
 
 export const PRICING_LIMITS = Object.freeze({
@@ -69,26 +70,30 @@ export function createPricingService(deps: {
   /** Shared cache (e.g. Upstash) consulted after the per-process cache. Errors are ignored. */
   sharedCache?: PricingCache
   cacheKeyPrefix?: string
+  /** Safe per-lookup diagnostics (search-telemetry.ts). Listener errors are ignored. */
+  onSearch?: PricingSearchListener
 }) {
   const cache = new Map<string, { at: number; result: ProviderResult }>()
   /** Identical concurrent searches in this process share ONE provider call. */
-  const inFlight = new Map<string, Promise<ProviderResult>>()
+  const inFlight = new Map<string, Promise<{ result: ProviderResult; cache: CacheOutcome }>>()
   const now = deps.now ?? Date.now
 
-  async function fetchAndStore(provider: PriceProvider, query: PriceQuery, key: string, sharedKey: string, gate: SearchGate | undefined): Promise<ProviderResult> {
+  async function fetchAndStore(provider: PriceProvider, query: PriceQuery, key: string, sharedKey: string, gate: SearchGate | undefined): Promise<{ result: ProviderResult; cache: CacheOutcome }> {
     if (deps.sharedCache) {
       try {
         const shared = await deps.sharedCache.get(sharedKey)
-        if (shared) return shared
+        if (shared) return { result: shared, cache: 'shared_hit' }
       } catch {
         // cache down: continue (the search budget still bounds provider calls)
       }
     }
     if (gate) {
       const decision = await gate().catch(() => ({ ok: false as const, reason: 'store_unavailable' as const }))
-      if (!decision.ok) return { status: 'unavailable', reason: decision.reason, offers: [], droppedInvalid: 0, latencyMs: 0 }
+      if (!decision.ok) return { result: { status: 'unavailable', reason: decision.reason, offers: [], droppedInvalid: 0, latencyMs: 0 }, cache: 'miss' }
     }
     let result: ProviderResult
+    // Exactly one provider call per cache miss: failures (timeout included) are never retried and
+    // never cached, so a timeout is reported as "unavailable", never as "no results".
     try {
       result = await provider.search(query)
     } catch {
@@ -99,19 +104,29 @@ export function createPricingService(deps: {
       cache.set(key, { at: now(), result })
       if (deps.sharedCache) await deps.sharedCache.set(sharedKey, result, PRICING_LIMITS.cacheTtlMs).catch(() => undefined)
     }
-    return result
+    return { result, cache: 'miss' }
+  }
+
+  function report(provider: PriceProvider, outcome: { result: ProviderResult; cache: CacheOutcome }, startedAt: number): ProviderResult {
+    try {
+      deps.onSearch?.({ provider: provider.id, cache: outcome.cache, result: outcome.result, durationMs: Date.now() - startedAt })
+    } catch {
+      // diagnostics must never break a search
+    }
+    return outcome.result
   }
 
   async function lookup(provider: PriceProvider, query: PriceQuery, gate: SearchGate | undefined): Promise<ProviderResult> {
+    const startedAt = Date.now()
     const q = buildProviderQuery(query)
     const key = `${provider.id}:${q.toLowerCase()}`
     const hit = cache.get(key)
-    if (hit && now() - hit.at < PRICING_LIMITS.cacheTtlMs) return hit.result
+    if (hit && now() - hit.at < PRICING_LIMITS.cacheTtlMs) return report(provider, { result: hit.result, cache: 'memory_hit' }, startedAt)
     const pending = inFlight.get(key)
-    if (pending) return pending
+    if (pending) return report(provider, { result: (await pending).result, cache: 'inflight' }, startedAt)
     const p = fetchAndStore(provider, query, key, pricingCacheKey(deps.cacheKeyPrefix ?? 'chuya', provider.id, q), gate).finally(() => inFlight.delete(key))
     inFlight.set(key, p)
-    return p
+    return report(provider, await p, startedAt)
   }
 
   return {

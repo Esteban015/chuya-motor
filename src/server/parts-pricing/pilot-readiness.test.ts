@@ -129,10 +129,16 @@ describe('PR-03 safe degradation of the distributed store', () => {
 
 describe('PR-04 no secrets in logs, responses or client code', () => {
   const serverDir = join(process.cwd(), 'src/server/parts-pricing')
-  const serverSrc = readdirSync(serverDir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')).map((f) => readFileSync(join(serverDir, f), 'utf8'))
+  const serverFiles = readdirSync(serverDir).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
 
-  it('the pricing server code never logs (no console.*) — nothing can leak a key or a query to logs', () => {
-    for (const src of serverSrc) expect(src).not.toMatch(/console\.(log|info|warn|error|debug)/)
+  it('only search-telemetry.ts logs (allow-listed codes and counters) — nothing else can leak a key or a query to logs', () => {
+    for (const f of serverFiles) {
+      const src = readFileSync(join(serverDir, f), 'utf8')
+      if (f === 'search-telemetry.ts') expect(src.match(/console\.(log|info|warn|error|debug)/g)).toEqual(['console.info'])
+      else expect(src, f).not.toMatch(/console\.(log|info|warn|error|debug)/)
+    }
+    // The one log call only ever prints the allow-listed record.
+    expect(readFileSync(join(serverDir, 'search-telemetry.ts'), 'utf8')).toContain("console.info('[parts-pricing]', JSON.stringify(toSafeSearchLog(event)))")
   })
 
   it('the route never returns provider diagnostics or audit data', async () => {
