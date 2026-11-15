@@ -99,5 +99,10 @@ export interface ProviderResult {
 
 export interface PriceProvider {
   id: ProviderId
+  /**
+   * Billing account the search budget is charged to (e.g. "serpapi:<sha256 of the key, 16 hex>").
+   * Never contains the credential. Defaults to the provider id.
+   */
+  budgetAccount?: string
   search(query: PriceQuery): Promise<ProviderResult>
 }

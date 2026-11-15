@@ -10,7 +10,7 @@
  *
  * Activation is pending: no Upstash database was created in 6.4D (no paid resources / approval).
  */
-import { QuotaStoreError, type QuotaStore, type ReserveResult } from './quota-store'
+import { QuotaStoreError, type QuotaCheck, type QuotaIncrement, type QuotaStore, type ReserveAllResult, type ReserveResult } from './quota-store'
 
 export const RESERVE_SCRIPT = `
 local cur = tonumber(redis.call('GET', KEYS[1]) or '0')
@@ -21,6 +21,46 @@ local n = redis.call('INCRBY', KEYS[1], amount)
 if ARGV[4] == '1' or redis.call('PTTL', KEYS[1]) < 0 then redis.call('PEXPIRE', KEYS[1], ARGV[3]) end
 return {1, n}
 `.trim()
+
+/**
+ * Multi-limit reservation (7C public pilot). ARGV layout: nChecks, then per check: nKeys, limit,
+ * key indexes (into KEYS); then nIncrements, then per increment: key index, ttlMs.
+ * All checks are evaluated before any write: either every counter is incremented or none.
+ */
+export const RESERVE_ALL_SCRIPT = `
+local p = 1
+local nchecks = tonumber(ARGV[p]) p = p + 1
+for c = 1, nchecks do
+  local n = tonumber(ARGV[p]) local limit = tonumber(ARGV[p + 1]) p = p + 2
+  local sum = 0
+  for i = 1, n do
+    sum = sum + tonumber(redis.call('GET', KEYS[tonumber(ARGV[p])]) or '0') p = p + 1
+  end
+  if sum + 1 > limit then return {0, c - 1} end
+end
+local ninc = tonumber(ARGV[p]) p = p + 1
+for i = 1, ninc do
+  local k = KEYS[tonumber(ARGV[p])] local ttl = ARGV[p + 1] p = p + 2
+  redis.call('INCR', k)
+  if redis.call('PTTL', k) < 0 then redis.call('PEXPIRE', k, ttl) end
+end
+return {1, -1}
+`.trim()
+
+/** Encodes checks + increments for RESERVE_ALL_SCRIPT: [numkeys, ...keys, ...argv]. */
+export function encodeReserveAll(checks: QuotaCheck[], increments: QuotaIncrement[]): Array<string | number> {
+  const keys: string[] = []
+  const index = (k: string) => {
+    let i = keys.indexOf(k)
+    if (i < 0) i = keys.push(k) - 1
+    return i + 1
+  }
+  const argv: Array<string | number> = [checks.length]
+  for (const c of checks) argv.push(c.keys.length, c.limit, ...c.keys.map(index))
+  argv.push(increments.length)
+  for (const inc of increments) argv.push(index(inc.key), inc.ttlMs)
+  return [keys.length, ...keys, ...argv]
+}
 
 export const ADJUST_SCRIPT = `
 local n = redis.call('INCRBY', KEYS[1], ARGV[1])
@@ -101,6 +141,12 @@ export class UpstashQuotaStore implements QuotaStore {
     const r = await this.#exec(['EVAL', RESERVE_SCRIPT, 1, key, amount, limit, ttlMs, refreshTtl ? '1' : '0'])
     if (!Array.isArray(r) || r.length !== 2) throw new QuotaStoreError('Unexpected reserve result.')
     return { ok: Number(r[0]) === 1, current: Number(r[1]) }
+  }
+
+  async reserveAll(checks: QuotaCheck[], increments: QuotaIncrement[]): Promise<ReserveAllResult> {
+    const r = await this.#exec(['EVAL', RESERVE_ALL_SCRIPT, ...encodeReserveAll(checks, increments)])
+    if (!Array.isArray(r) || r.length !== 2) throw new QuotaStoreError('Unexpected reserve result.')
+    return Number(r[0]) === 1 ? { ok: true } : { ok: false, failed: Number(r[1]) }
   }
 
   async adjust(key: string, delta: number, ttlMs: number): Promise<number> {

@@ -24,6 +24,20 @@ export interface ReserveResult {
   current: number
 }
 
+/** One limit of a multi-limit reservation: SUM(GET keys) + 1 must stay <= limit. */
+export interface QuotaCheck {
+  keys: string[]
+  limit: number
+}
+
+/** A counter incremented by 1 when every check passes (TTL set only when the key has none). */
+export interface QuotaIncrement {
+  key: string
+  ttlMs: number
+}
+
+export type ReserveAllResult = { ok: true } | { ok: false; failed: number }
+
 export interface QuotaStore {
   readonly kind: 'memory' | 'upstash'
   /** True only when the counters are shared across instances (required in production). */
@@ -33,6 +47,11 @@ export interface QuotaStore {
    * or always when `refreshTtl` is true (semaphores: bounds leaks from crashed instances).
    */
   reserve(key: string, amount: number, limit: number, ttlMs: number, refreshTtl?: boolean): Promise<ReserveResult>
+  /**
+   * Checks EVERY limit and, only if all pass, increments every counter — in one atomic operation
+   * (Upstash: one Lua script). Never partially applied. `failed` = index of the first failing check.
+   */
+  reserveAll(checks: QuotaCheck[], increments: QuotaIncrement[]): Promise<ReserveAllResult>
   /** Atomically adds `delta` (may be negative); the stored value never goes below 0. */
   adjust(key: string, delta: number, ttlMs: number): Promise<number>
   get(key: string): Promise<number>
@@ -79,6 +98,18 @@ export class InMemoryQuotaStore implements QuotaStore {
     const expiresAt = !e || e.expiresAt === null || refreshTtl ? this.#now() + ttlMs : e.expiresAt
     this.#entries.set(key, { value: current + amount, expiresAt })
     return { ok: true, current: current + amount }
+  }
+
+  async reserveAll(checks: QuotaCheck[], increments: QuotaIncrement[]): Promise<ReserveAllResult> {
+    for (let i = 0; i < checks.length; i++) {
+      const sum = checks[i]!.keys.reduce((n, k) => n + (this.#live(k)?.value ?? 0), 0)
+      if (sum + 1 > checks[i]!.limit) return { ok: false, failed: i }
+    }
+    for (const { key, ttlMs } of increments) {
+      const e = this.#live(key)
+      this.#entries.set(key, { value: (e?.value ?? 0) + 1, expiresAt: e?.expiresAt ?? this.#now() + ttlMs })
+    }
+    return { ok: true }
   }
 
   async adjust(key: string, delta: number, ttlMs: number): Promise<number> {

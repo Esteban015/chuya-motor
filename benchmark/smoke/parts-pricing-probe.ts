@@ -11,7 +11,11 @@
  *
  * Single controlled case (1 request): add PARTS_PRICING_PROBE_CASE=B (session only, A–E).
  *
- * Consumption: exactly one provider request per case (5 cases, or 1 with PARTS_PRICING_PROBE_CASE), no retries. Mercado Libre: free
+ * Budget (7C public pilot): every real search is charged to the SAME shared budget as the API route
+ * (search-budget.ts: per hour / day / rolling 31 days of the SerpApi account) and needs Upstash;
+ * without the distributed store, or with the budget exhausted, nothing is sent.
+ *
+ * Consumption: at most one provider request per case (5 cases, or 1 with PARTS_PRICING_PROBE_CASE), no retries. Mercado Libre: free
  * API calls. SerpApi: 5 searches of the plan quota (Free plan: 250/month). Blocked in CI.
  * Output: status, latency, counts and the offers EXACTLY as returned (title, ARS price, merchant,
  * URL) to reviews-local/parts-pricing/ (git-ignored). Nothing is invented.
@@ -22,6 +26,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { loadEnvLocal } from './load-env-local'
 import { createPricingService } from '../../src/server/parts-pricing/pricing-service'
+import { readPartsPricingConfig } from '../../src/server/parts-pricing/pricing-config'
+import { createSearchGate } from '../../src/server/parts-pricing/search-budget'
+import { readLlmProtectionConfig } from '../../src/server/llm-protection/protection-config'
+import { resolveSharedStore } from '../../src/server/llm-protection/runtime'
 import { selectPriceProvider } from '../../src/server/parts-pricing/provider-registry'
 import { buildProviderQuery } from '../../src/server/parts-pricing/query'
 
@@ -59,11 +67,31 @@ async function main(): Promise<void> {
     console.log(`Unknown PARTS_PRICING_PROBE_CASE. No request sent.`)
     return
   }
+  // Shared budget: the probe consumes the same SerpApi quota as the public route.
+  let store = null
+  try {
+    const llm = readLlmProtectionConfig(process.env)
+    store = llm.store === 'upstash' ? resolveSharedStore(llm) : null
+  } catch {
+    store = null
+  }
+  if (!store) {
+    console.log('No Upstash store configured: real searches are not counted, so none is sent.')
+    return
+  }
+  const gate = createSearchGate({
+    store,
+    limits: readPartsPricingConfig(process.env),
+    clientKey: 'probe',
+    account: provider.budgetAccount ?? provider.id,
+    now: Date.now,
+    requireDistributed: true,
+  })
   const service = createPricingService({ provider })
   const report: unknown[] = []
   for (const c of cases) {
     const started = Date.now()
-    const r = await service.research({ lines: [{ id: c.id, description: c.description, category: 'part', presentation: c.presentation }], vehicle: c.vehicle, audit: true })
+    const r = await service.research({ lines: [{ id: c.id, description: c.description, category: 'part', presentation: c.presentation }], vehicle: c.vehicle, audit: true, beforeProviderCall: gate })
     const item = r.items[0]
     const d = item?.diagnostics
     // Safe diagnostics only: HTTP/provider codes, counters, drop/discard reasons, masked price

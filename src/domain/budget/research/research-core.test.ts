@@ -190,3 +190,15 @@ describe('validateReferenceInput', () => {
     if (!r.ok) expect(Object.keys(r.errors).sort()).toEqual(['compatibility', 'consultedOn', 'presentation', 'quantity', 'store'])
   })
 })
+
+describe('RC-PRIV (7C public pilot): vehicle fields never carry plates or phone numbers to the search', () => {
+  it('manual engine / make with a capitalized plate or a phone → removed; part codes untouched', () => {
+    const q = buildPartSearch({ description: 'Filtro de aire', partCode: 'AB123CD', vehicle: { make: 'Renault ABC123', model: 'Clio', engine: '1.2 16v AB123CD 11 4567-8901', year: '1999' } }).query
+    expect(q).toBe('Filtro de aire AB123CD Renault Clio 1.2 16v 1999 Argentina')
+  })
+
+  it('model: Mercosur plate removed; motorcycle models such as CBR600 or XRE300 are kept', () => {
+    expect(buildPartSearch({ description: 'Pastillas de freno', vehicle: { make: 'Honda', model: 'CBR600' } }).query).toBe('Pastillas de freno Honda CBR600 Argentina')
+    expect(buildPartSearch({ description: 'Pastillas de freno', vehicle: { make: 'Honda', model: 'XRE300 AC456BD' } }).query).toBe('Pastillas de freno Honda XRE300 Argentina')
+  })
+})

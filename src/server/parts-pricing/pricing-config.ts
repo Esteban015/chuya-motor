@@ -6,8 +6,10 @@
  * enabled, a provider call needs PARTS_PRICING_PROVIDER + its credential (provider-registry.ts).
  *
  * Budgets count PROVIDER SEARCHES (cache misses), not requests: one search = one SerpApi credit.
- * Defaults are deliberately small (internal pilot) and stay below the SerpApi Free plan (250/month).
- * Days and months are UTC.
+ * Defaults stay below the SerpApi Free plan (250 successful searches per billing cycle, 50/hour).
+ * Hours and days are UTC. The "monthly" budget is a ROLLING 31-day window (search-budget.ts): the
+ * SerpApi quota follows the account's billing cycle, not the calendar month, so a calendar-month
+ * counter could allow twice the budget inside one cycle. All limits are checked atomically.
  */
 if (typeof window !== 'undefined') throw new Error('parts-pricing is server-only')
 
@@ -23,9 +25,11 @@ export const PRICING_BUDGET_DEFAULTS = Object.freeze({
   clientRequestsPerHour: 5,
   /** Provider searches per client per UTC day. */
   clientDailySearches: 10,
-  /** Provider searches per UTC day for the whole deployment. */
+  /** Provider searches per UTC hour for the SerpApi account (Free plan throughput = 50/h). */
+  hourlySearchBudget: 40,
+  /** Provider searches per UTC day for the SerpApi account. */
   dailySearchBudget: 20,
-  /** Provider searches per UTC month for the whole deployment (SerpApi Free = 250). */
+  /** Provider searches in any rolling 31-day window for the SerpApi account (Free = 250/cycle). */
   monthlySearchBudget: 200,
 })
 
@@ -33,6 +37,7 @@ export interface PartsPricingConfig {
   enabled: boolean
   clientRequestsPerHour: number
   clientDailySearches: number
+  hourlySearchBudget: number
   dailySearchBudget: number
   monthlySearchBudget: number
   /** Production refuses provider calls without a distributed (shared) counter store. */
@@ -66,6 +71,7 @@ export function readPartsPricingConfig(env: Env = process.env): PartsPricingConf
     enabled: isPartsPricingEnabled(env),
     clientRequestsPerHour: int(env, 'PARTS_PRICING_CLIENT_REQUESTS_PER_HOUR', PRICING_BUDGET_DEFAULTS.clientRequestsPerHour, 1, 1000),
     clientDailySearches: int(env, 'PARTS_PRICING_CLIENT_DAILY_SEARCHES', PRICING_BUDGET_DEFAULTS.clientDailySearches, 0, 10_000),
+    hourlySearchBudget: int(env, 'PARTS_PRICING_HOURLY_SEARCH_BUDGET', PRICING_BUDGET_DEFAULTS.hourlySearchBudget, 0, 100_000),
     dailySearchBudget: int(env, 'PARTS_PRICING_DAILY_SEARCH_BUDGET', PRICING_BUDGET_DEFAULTS.dailySearchBudget, 0, 100_000),
     monthlySearchBudget: int(env, 'PARTS_PRICING_MONTHLY_SEARCH_BUDGET', PRICING_BUDGET_DEFAULTS.monthlySearchBudget, 0, 1_000_000),
     requireDistributedStore: env['NODE_ENV'] === 'production',

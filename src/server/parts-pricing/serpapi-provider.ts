@@ -31,6 +31,7 @@ import {
   toMinor,
   unavailable,
 } from './provider-utils'
+import { budgetAccountFor } from './search-budget'
 import type { DropReason, FetchLike, PriceOffer, PriceProvider, PriceQuery, ProviderDiagnostics, ProviderResult } from './types'
 
 export const SERPAPI_URL = 'https://serpapi.com/search.json'
@@ -136,6 +137,7 @@ export function createSerpApiProvider(opts: { apiKey: string | undefined; fetch?
   const doFetch: FetchLike = opts.fetch ?? ((input, init) => fetch(input, init))
   return {
     id: 'serpapi',
+    budgetAccount: budgetAccountFor('serpapi', opts.apiKey ?? ''),
     async search(query: PriceQuery): Promise<ProviderResult> {
       const startedAt = Date.now()
       if (!opts.apiKey) return { status: 'disabled', offers: [], droppedInvalid: 0, latencyMs: 0 }
