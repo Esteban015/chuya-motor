@@ -31,6 +31,15 @@ const E2E_ENV: Record<string, string> = {
  */
 const CATALOG_E2E_PORT = 3002
 
+/**
+ * 7E: a THIRD production server (CI only, same build) where the AI is unavailable: a real provider
+ * selected without a key AND the LLM kill switch on, so no request can ever leave the machine.
+ * e2e/budget-deterministic.spec.ts checks that the budget verification survives. Locally, run it
+ * against your own server with PLAYWRIGHT_AI_DOWN_BASE_URL, or it is skipped.
+ */
+const AI_DOWN_E2E_PORT = 3003
+const AI_DOWN_ENV: Record<string, string> = { ...E2E_ENV, LLM_PROVIDER: 'groq', GROQ_API_KEY: '', LLM_KILL_SWITCH: 'true' }
+
 export default defineConfig({
   testDir: './e2e',
   testIgnore: ['**/increment3-dev.spec.ts', '**/visual-audit.spec.ts'],
@@ -63,6 +72,12 @@ export default defineConfig({
             url: `http://localhost:${CATALOG_E2E_PORT}`,
             reuseExistingServer: false,
             env: { ...E2E_ENV, VEHICLE_CATALOG_ENABLED: 'true' },
+          },
+          {
+            command: `npm run start -- -p ${AI_DOWN_E2E_PORT}`,
+            url: `http://localhost:${AI_DOWN_E2E_PORT}`,
+            reuseExistingServer: false,
+            env: AI_DOWN_ENV,
           },
         ]
       : []),

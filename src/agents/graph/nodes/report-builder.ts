@@ -3,6 +3,7 @@ import type { GraphState } from '../graph-state'
 import type { AnalyzeOutput, BudgetOutput } from '../types'
 import { createTrace } from '../trace'
 import { buildBudgetWorkshopQuestions } from '@/domain/questions/question-audience'
+import { breakdownByCategory, type BudgetTextAnalysis } from '@/domain/budget/deterministic-budget'
 
 const NODE_ID = 'reportBuilder'
 
@@ -10,9 +11,28 @@ const NODE_ID = 'reportBuilder'
 const SAFETY_DERIVATION_MESSAGE =
   'Por seguridad, este tipo de intervención requiere atención profesional. Contactá un taller o mecánico habilitado.'
 
+/** 7E: deterministic detail (items, breakdown, notes) — the amounts are never taken from LLM text. */
+function budgetDetail(analysis: BudgetTextAnalysis | null, source: GraphState['budgetSource']) {
+  const items = (analysis?.items ?? []).slice(0, 50).map((i) => ({
+    description: i.description,
+    category: i.category,
+    quantity: i.quantity,
+    amountMinorUnit: i.amountMinorUnit,
+    status: i.status,
+    ...(i.issue ? { issue: i.issue } : {}),
+  }))
+  return {
+    items,
+    ambiguousLineCount: items.filter((i) => i.status === 'ambiguous').length,
+    notes: analysis?.notes ?? [],
+    source: source ?? null,
+  }
+}
+
 function buildBudgetOutput(state: GraphState): BudgetOutput | null {
   if (state.route !== 'budget') return null
   const bs = state.budgetState
+  const detail = budgetDetail(state.budgetAnalysis, state.budgetSource)
   if (!bs) {
     return {
       completenessStatus: 'INVALID',
@@ -20,12 +40,17 @@ function buildBudgetOutput(state: GraphState): BudgetOutput | null {
       computedTotalIsPartial: false,
       currency: null,
       discrepancy: null,
-      lineCount: 0,
-      missingLineCount: 0,
+      lineCount: detail.items.length,
+      missingLineCount: detail.items.filter((i) => i.status !== 'priced').length,
+      declaredTotalMinorUnit: state.budgetAnalysis?.declaredTotalMinorUnit ?? null,
+      differenceMinorUnit: null,
+      breakdown: null,
+      ...detail,
     }
   }
   const confirmedLines = bs.lines.filter((l) => l.status === 'confirmed').length
   const missingLines = bs.lines.filter((l) => l.status === 'missing').length
+  const comparable = bs.completenessStatus === 'COMPLETE' && bs.computedTotal !== null && bs.declaredTotalMinorUnit !== null
   return {
     completenessStatus: bs.completenessStatus,
     computedTotalMinorUnit: bs.computedTotal,
@@ -34,6 +59,10 @@ function buildBudgetOutput(state: GraphState): BudgetOutput | null {
     discrepancy: bs.discrepancy,
     lineCount: confirmedLines + missingLines,
     missingLineCount: missingLines,
+    declaredTotalMinorUnit: bs.declaredTotalMinorUnit,
+    differenceMinorUnit: comparable ? bs.declaredTotalMinorUnit! - bs.computedTotal! : null,
+    breakdown: bs.completenessStatus === 'INVALID' || !state.budgetAnalysis ? null : breakdownByCategory(state.budgetAnalysis.items),
+    ...detail,
   }
 }
 
@@ -71,6 +100,7 @@ export async function reportBuilderNode(state: GraphState): Promise<Partial<Grap
       missingInformation: state.missingInformation,
       fallback: state.fallback,
       fallbackText: state.fallback ? FALLBACK_TEXT : null,
+      aiUnavailable: !blocked && !state.fallback && state.aiUnavailable,
       traces: state.traces,
     }
 

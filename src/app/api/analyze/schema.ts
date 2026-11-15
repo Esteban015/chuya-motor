@@ -90,7 +90,33 @@ export interface ClientBudgetOutput {
   discrepancy: boolean | null
   lineCount: number
   missingLineCount: number
+  // 7E — additive, deterministic fields (optional: clients tolerate servers that predate them).
+  declaredTotalMinorUnit?: number | null
+  differenceMinorUnit?: number | null
+  ambiguousLineCount?: number
+  breakdown?: ClientBudgetBreakdown | null
+  items?: ClientBudgetItem[]
+  notes?: ClientBudgetNote[]
+  source?: 'deterministic' | 'llm' | null
 }
+
+export interface ClientBudgetBreakdown {
+  partMinorUnit: number
+  laborMinorUnit: number
+  otherMinorUnit: number
+  unclassifiedMinorUnit: number
+}
+
+export interface ClientBudgetItem {
+  description: string
+  category: 'part' | 'labor' | 'other' | 'unclassified'
+  quantity: number
+  amountMinorUnit: number | null
+  status: 'priced' | 'pending' | 'missing' | 'ambiguous'
+  issue?: 'unreadable_amount' | 'amount_without_separator' | 'discount_sign' | 'unverified_amount'
+}
+
+export type ClientBudgetNote = 'declared_total_conflict' | 'declared_total_unreadable' | 'lines_truncated' | 'text_not_interpreted'
 
 export interface ClientAnalyzeOutput {
   caseId: string
@@ -113,6 +139,8 @@ export interface ClientAnalyzeOutput {
   missingInformation: string[]
   fallback: boolean
   fallbackText: string | null
+  /** 7E — additive: the AI failed but the deterministic budget results are present. */
+  aiUnavailable?: boolean
   // Simplified trace for DEV mode only; null in production
   nodeTrace: NodeTraceSummary[] | null
   // Severity assessment — null means normal (no banner). Computed server-side, never from LLM.

@@ -518,7 +518,8 @@ describe('INT4-01: resultType is set on each node trace', () => {
     )
     const byNode = Object.fromEntries(output.traces.map((t) => [t.nodeId, t]))
     expect((byNode['router'] as { resultType?: string })?.resultType).toBe('route_budget')
-    expect((byNode['budgetParser'] as { resultType?: string })?.resultType).toBe('budget_parsed')
+    // 7E: interpretable lines → deterministic result (the stub LLM answered, but never sets amounts).
+    expect((byNode['budgetParser'] as { resultType?: string })?.resultType).toBe('budget_parsed_deterministic')
     expect((byNode['budgetCalculator'] as { resultType?: string })?.resultType).toBe('budget_complete')
   })
 
@@ -845,11 +846,22 @@ describe('INT5C-03: budget currency contract — Zod rejects missing currency (R
       currency: 'ARS',
     }
     const adapter = makeFixedAdapter(null, JSON.stringify(noCurrencyPayload))
+    // Text without deterministic lines: only the LLM could read it, and its answer is rejected.
     const output = await analyzeCase(
-      makeInput({ userText: 'Aceite motor: 4500\nTotal: 4500' }),
+      makeInput({ userText: 'El taller me pasó un presupuesto de 45000 por cambiar el aceite' }),
       { llmAdapter: adapter, documentSourcePort: docSource },
     )
     expect(output.budget?.completenessStatus).toBe('INVALID')
+    expect(output.fallback).toBe(true)
+  })
+
+  it('INT5C-03-A2 (7E): same schema violation on an interpretable text → deterministic result kept, AI marked unavailable', async () => {
+    const adapter = makeFixedAdapter(null, JSON.stringify({ lines: [{ status: 'confirmed', description: 'Aceite', amountMinorUnit: 450000 }], declaredTotalMinorUnit: 450000, currency: 'ARS' }))
+    const output = await analyzeCase(makeInput({ userText: 'Aceite motor: 4500\nTotal: 4500' }), { llmAdapter: adapter, documentSourcePort: docSource })
+    expect(output.fallback).toBe(false)
+    expect(output.aiUnavailable).toBe(true)
+    expect(output.budget).toMatchObject({ completenessStatus: 'COMPLETE', computedTotalMinorUnit: 450000, discrepancy: false, source: 'deterministic' })
+    expect(output.traces.find((t) => t.nodeId === 'budgetParser')?.errorCode).toBe('LLM_SCHEMA_VIOLATION')
   })
 
   it('INT5C-03-B: budget — confirmed lines WITH currency → COMPLETE', async () => {
@@ -876,10 +888,17 @@ describe('INT5C-03: budget currency contract — Zod rejects missing currency (R
     const emptyLinesPayload = { lines: [], declaredTotalMinorUnit: null, currency: null }
     const adapter = makeFixedAdapter(null, JSON.stringify(emptyLinesPayload))
     const output = await analyzeCase(
-      makeInput({ userText: 'Aceite motor: 4500\nTotal: 4500' }),
+      makeInput({ userText: 'El taller me pasó un presupuesto de 45000 por cambiar el aceite' }),
       { llmAdapter: adapter, documentSourcePort: docSource },
     )
     expect(output.budget?.completenessStatus).toBe('INVALID')
+  })
+
+  it('INT5C-03-C2 (7E): an LLM answer with no lines cannot erase interpretable lines', async () => {
+    const adapter = makeFixedAdapter(null, JSON.stringify({ lines: [], declaredTotalMinorUnit: null, currency: null }))
+    const output = await analyzeCase(makeInput({ userText: 'Aceite motor: 4500\nTotal: 4500' }), { llmAdapter: adapter, documentSourcePort: docSource })
+    expect(output.budget).toMatchObject({ completenessStatus: 'COMPLETE', lineCount: 1, source: 'deterministic' })
+    expect(output.aiUnavailable).toBe(false)
   })
 })
 
@@ -943,8 +962,10 @@ describe('INT5C-04: token tracking — tokensUsed captured even on parse/validat
       makeInput({ userText: 'Aceite motor: 4500\nTotal: 4500' }),
       { llmAdapter: new BudgetTokenAdapter(), documentSourcePort: docSource },
     )
-    expect(output.budget?.completenessStatus).toBe('INVALID')
-    const budgetTrace = output.traces.find((t) => t.nodeId === 'budgetParser' && t.fallbackActivated)
+    // 7E: the deterministic lines are kept; the failed AI step is still traced with its tokens.
+    expect(output.budget?.completenessStatus).toBe('COMPLETE')
+    expect(output.aiUnavailable).toBe(true)
+    const budgetTrace = output.traces.find((t) => t.nodeId === 'budgetParser' && t.errorCode === 'LLM_SCHEMA_VIOLATION')
     expect(budgetTrace?.tokensUsed).toBe(33)
   })
 })
@@ -995,14 +1016,24 @@ describe('INT5D-01: LLM provider errors propagate to output traces', () => {
         return { ok: false, error: { code: 'LLM_MODEL_UNAVAILABLE', message: 'Gemini model not found (404): models/gemini-99 is not found' } }
       },
     }
+    // Not deterministically interpretable → fallback, error propagated.
     const output = await analyzeCase(
-      makeInput({ userText: 'Aceite motor: 4500\nFiltro de aceite: 2000\nTotal: 6500' }),
+      makeInput({ userText: 'El taller me pasó un presupuesto de 45000 por cambiar el aceite' }),
       { llmAdapter: adapter, documentSourcePort: docSource },
     )
     expect(output.fallback).toBe(true)
     const budgetTrace = output.traces.find((t) => t.nodeId === 'budgetParser')
     expect(budgetTrace?.errorCode).toBe('LLM_MODEL_UNAVAILABLE')
     expect(budgetTrace?.resultType).toBe('budget_llm_error')
+
+    // 7E: interpretable lines → results kept, same error code traced, AI marked unavailable.
+    const kept = await analyzeCase(makeInput({ userText: 'Aceite motor: 4500\nFiltro de aceite: 2000\nTotal: 6500' }), { llmAdapter: adapter, documentSourcePort: docSource })
+    expect(kept.fallback).toBe(false)
+    expect(kept.aiUnavailable).toBe(true)
+    expect(kept.budget).toMatchObject({ completenessStatus: 'COMPLETE', computedTotalMinorUnit: 650000, discrepancy: false })
+    const keptTrace = kept.traces.find((t) => t.nodeId === 'budgetParser')
+    expect(keptTrace?.errorCode).toBe('LLM_MODEL_UNAVAILABLE')
+    expect(keptTrace?.resultType).toBe('budget_parsed_deterministic_ai_unavailable')
   })
 
   it('INT5D-01-D: empty response (LLM_EMPTY_RESPONSE) → fallback=true, errorCode in trace', async () => {

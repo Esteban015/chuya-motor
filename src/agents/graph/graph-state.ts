@@ -2,6 +2,7 @@ import { Annotation } from '@langchain/langgraph'
 import type { Vehicle } from '@/domain/vehicle/vehicle'
 import type { SafetyGateResult } from '@/domain/safety/safety-policy'
 import type { BudgetLine, BudgetParseState } from '@/domain/budget/budget'
+import type { BudgetTextAnalysis } from '@/domain/budget/deterministic-budget'
 import type { Hypothesis, AnalyzeOutput } from './types'
 import type { TraceMetadata } from './trace'
 
@@ -80,6 +81,26 @@ export const GraphStateAnnotation = Annotation.Root({
   budgetState: Annotation<BudgetParseState | null>({
     reducer: (_prev, next) => next,
     default: () => null,
+  }),
+  /**
+   * 7E: deterministic reading of the budget (items, categories, declared total, notes). Source of
+   * the line items and amounts whenever it finds interpretable lines — with or without the LLM.
+   */
+  budgetAnalysis: Annotation<BudgetTextAnalysis | null>({
+    reducer: (_prev, next) => next,
+    default: () => null,
+  }),
+  budgetSource: Annotation<'deterministic' | 'llm' | null>({
+    reducer: (_prev, next) => next,
+    default: () => null,
+  }),
+  /**
+   * 7E: the generative step was unavailable (provider error, timeout, quota, disabled) but the
+   * deterministic result is still valid. Unlike `fallback`, it does not discard the results.
+   */
+  aiUnavailable: Annotation<boolean>({
+    reducer: (prev, next) => prev || next,
+    default: () => false,
   }),
 
   // Ajuste C: only sourceIds — no excerpt text stored in shared state
