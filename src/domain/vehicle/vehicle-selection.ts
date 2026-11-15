@@ -62,6 +62,8 @@ export type VehicleSelectionAction =
   | { type: 'yearUnknown' }
   | { type: 'selectVersion'; value: CatalogVersion }
   | { type: 'versionUnknown' }
+  /** 7D.3: the clear (×) button of a searchable field; resets that field and every dependent. */
+  | { type: 'clear'; field: 'brand' | 'model' | 'version' }
   | { type: 'switchToManual' }
   | { type: 'backToCatalog' }
   | { type: 'manualField'; field: keyof ManualVehicleFields; value: string }
@@ -122,6 +124,16 @@ export function vehicleSelectionReducer(s: VehicleSelectionState, a: VehicleSele
     case 'versionUnknown':
       if (!s.model) return s
       return { ...s, version: null, versionUnknown: true, announcement: '' }
+    case 'clear': {
+      if (s.mode !== 'catalog') return s
+      const labels = dependents(s, a.field)
+      const set = a.field === 'version' ? s.version !== null || s.versionUnknown : s[a.field] !== null
+      if (!set) return s
+      const announcement = `Se borr${labels.length > 1 ? 'aron' : 'ó'} ${joinEs(labels)}.`
+      if (a.field === 'version') return { ...s, version: null, versionUnknown: false, announcement }
+      const keep = a.field === 'model' ? { brand: s.brand } : { brand: null }
+      return { ...s, ...keep, model: null, year: null, yearUnknown: false, version: null, versionUnknown: false, announcement }
+    }
     case 'switchToManual':
       return {
         ...initialVehicleSelection,

@@ -7,9 +7,9 @@
  * GET /api/vehicle-catalog (the browser never downloads the whole catalog). State lives in the
  * parent (vehicleSelectionReducer) so the rest of the form is never lost.
  *
- * - Native controls only (radio group, <select>, text inputs): keyboard and screen-reader support
- *   by default, 44 px touch targets, full width on 320/390.
- * - Long lists get a search box that filters the options.
+ * - Tipo is a radio group and Año a native <select>. 7D.3: Marca, Modelo and Versión are ONE
+ *   searchable combobox each (SearchableSelect, ARIA combobox pattern): the same field is used to
+ *   search and to choose, never a search box next to a select. 44 px targets, full width on 320/390.
  * - Loading / empty / error / timeout / offline states, always with a way out to manual entry.
  * - "No sé el año", "No conozco el motor" and "No encuentro mi vehículo" (manual, marked as not
  *   verified). Resets of dependent fields are announced in an aria-live region.
@@ -17,6 +17,7 @@
  * Mounted only when the server-side flag is on (VEHICLE_CATALOG_ENABLED); off → legacy fields.
  */
 import { useEffect, useId, useMemo, useState, type Dispatch } from 'react'
+import { SearchableSelect } from '@/components/ui/searchable-select'
 import {
   CATEGORY_LABEL,
   VEHICLE_CATEGORIES,
@@ -131,7 +132,6 @@ const labelCls = 'mb-1.5 block text-xs font-medium text-brand-text-muted'
 const linkBtnCls =
   'inline-flex min-h-[44px] items-center rounded-lg px-1 text-sm font-semibold text-brand-primary underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary'
 
-const FILTER_THRESHOLD = 8
 const UNKNOWN = '__unknown__'
 
 const sentenceCase = (t: string) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()
@@ -178,8 +178,8 @@ interface Option {
   label: string
 }
 
-function ListStatus({ state, emptyText, what, onRetry, onManual }: { state: ListState<unknown[]>; emptyText: string; what: string; onRetry: () => void; onManual: () => void }) {
-  if (state.status === 'loading') return <p role="status" className="mt-1.5 text-xs text-brand-text-muted">Cargando {what}…</p>
+function ListStatus({ state, emptyText, what, onRetry, onManual, showLoading = true }: { state: ListState<unknown[]>; emptyText: string; what: string; onRetry: () => void; onManual: () => void; showLoading?: boolean }) {
+  if (state.status === 'loading' && showLoading) return <p role="status" className="mt-1.5 text-xs text-brand-text-muted">Cargando {what}…</p>
   if (state.status === 'ready' && Array.isArray(state.data) && state.data.length === 0) {
     return (
       <p role="status" className="mt-1.5 text-xs text-brand-text-muted" data-testid="vehicle-selector-empty">
@@ -202,7 +202,8 @@ function ListStatus({ state, emptyText, what, onRetry, onManual }: { state: List
   return null
 }
 
-function FilterableSelect(props: {
+/** Native select for short lists (Año): no search needed. */
+function PlainSelect(props: {
   id: string
   label: string
   options: Option[]
@@ -212,55 +213,15 @@ function FilterableSelect(props: {
   placeholder: string
   hint?: string
   extraOptions?: Option[]
-  /** Short lists such as years never need a search box. */
-  searchable?: boolean
 }) {
-  const { id, label, options, value, onChange, disabled, placeholder, hint, extraOptions = [], searchable = true } = props
-  const [filter, setFilter] = useState('')
-  const filterable = searchable && options.length > FILTER_THRESHOLD
-  const visible = useMemo(() => {
-    const f = filter
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
-      .toLowerCase()
-      .trim()
-    if (!f) return options
-    return options.filter((o) => o.value === value || o.label.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(f))
-  }, [filter, options, value])
+  const { id, label, options, value, onChange, disabled, placeholder, hint, extraOptions = [] } = props
   const hintId = `${id}-hint`
-  const countId = `${id}-count`
   return (
     <div className="min-w-0">
       <label htmlFor={id} className={labelCls}>{label}</label>
-      {filterable && !disabled && (
-        <div className="mb-2">
-          <label htmlFor={`${id}-filter`} className="sr-only">Buscar {label.toLowerCase()}</label>
-          <input
-            id={`${id}-filter`}
-            type="search"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder={`Buscar ${label.toLowerCase()}…`}
-            aria-controls={id}
-            aria-describedby={countId}
-            className={fieldCls}
-          />
-          <p id={countId} aria-live="polite" className="sr-only">{visible.length} resultados</p>
-        </div>
-      )}
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        aria-describedby={hint ? hintId : undefined}
-        className={fieldCls}
-      >
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} aria-describedby={hint ? hintId : undefined} className={fieldCls}>
         <option value="">{placeholder}</option>
-        {visible.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-        {extraOptions.map((o) => (
+        {[...options, ...extraOptions].map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
@@ -268,6 +229,10 @@ function FilterableSelect(props: {
     </div>
   )
 }
+
+const modelLabel = (m: CatalogModel) => (m.discontinued ? `${m.name} (ya no se fabrica)` : m.name)
+const NO_OPTIONS: Option[] = []
+const VERSION_UNKNOWN_OPTIONS: Option[] = [{ value: UNKNOWN, label: 'No conozco el motor ni la versión' }]
 
 // ── Component ───────────────────────────────────────────────────────────────
 
@@ -309,6 +274,11 @@ export function VehicleSelector({ state: s, dispatch, loader = defaultLoader, as
   const typeOptions: CatalogType[] = catalogMode ? (types.status === 'ready' ? types.data : []) : VEHICLE_CATEGORIES.map(staticTypeFor)
   const typeErrorId = `${uid}-type-error`
   const yearError = manualYearError(s)
+  // Stable option arrays (the combobox caches normalized search text per option object).
+  const brandOptions = useMemo(() => (brands.status === 'ready' ? brands.data.map((b) => ({ value: b.id, label: b.name, keywords: b.aliases })) : NO_OPTIONS), [brands])
+  const modelOptions = useMemo(() => (models.status === 'ready' ? models.data.map((m) => ({ value: m.id, label: modelLabel(m), keywords: m.aliases })) : NO_OPTIONS), [models])
+  const modelName = s.model?.name
+  const versionOptions = useMemo(() => (versions.status === 'ready' ? versions.data.map((v) => ({ value: v.id, label: versionOptionLabel(v, modelName) })) : NO_OPTIONS), [versions, modelName])
 
   return (
     <div className="space-y-4" data-testid="vehicle-selector" data-mode={s.mode}>
@@ -358,35 +328,47 @@ export function VehicleSelector({ state: s, dispatch, loader = defaultLoader, as
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="min-w-0">
-              <FilterableSelect
+              <SearchableSelect
                 id={`${uid}-brand`}
                 label="Marca"
-                placeholder={s.type ? 'Elegí la marca' : 'Elegí primero el tipo'}
-                options={brands.status === 'ready' ? brands.data.map((b) => ({ value: b.id, label: b.name })) : []}
+                placeholder={s.type ? 'Buscá o elegí la marca' : 'Elegí primero el tipo'}
+                options={brandOptions}
                 value={s.brand?.id ?? ''}
+                valueLabel={s.brand?.name}
+                loading={brands.status === 'loading'}
+                loadingText="Cargando marcas…"
+                emptyMessage="Ninguna marca coincide con lo que escribiste."
+                clearable
                 disabled={disabled || brands.status !== 'ready' || brands.data.length === 0}
                 onChange={(id) => {
+                  if (!id) return dispatch({ type: 'clear', field: 'brand' })
                   const b = brands.status === 'ready' ? brands.data.find((x) => x.id === id) : undefined
                   if (b) dispatch({ type: 'selectBrand', value: b })
                 }}
               />
-              <ListStatus state={brands} what="las marcas" emptyText="No hay marcas cargadas para este tipo." onRetry={doRetry} onManual={toManual} />
+              <ListStatus state={brands} showLoading={false} what="las marcas" emptyText="No hay marcas cargadas para este tipo." onRetry={doRetry} onManual={toManual} />
             </div>
             <div className="min-w-0">
-              <FilterableSelect
+              <SearchableSelect
                 id={`${uid}-model`}
                 label="Modelo"
-                placeholder={s.brand ? 'Elegí el modelo' : 'Elegí primero la marca'}
-                options={models.status === 'ready' ? models.data.map((m) => ({ value: m.id, label: m.discontinued ? `${m.name} (ya no se fabrica)` : m.name })) : []}
+                placeholder={s.brand ? 'Buscá o elegí el modelo' : 'Elegí primero la marca'}
+                options={modelOptions}
                 value={s.model?.id ?? ''}
+                valueLabel={s.model ? modelLabel(s.model) : undefined}
+                loading={models.status === 'loading'}
+                loadingText="Cargando modelos…"
+                emptyMessage="Ningún modelo coincide con lo que escribiste."
+                clearable
                 disabled={disabled || models.status !== 'ready' || models.data.length === 0}
                 hint={s.model?.editorial?.includes('category') ? 'La clasificación de tipo de este modelo (o de algunas de sus versiones) es una revisión de Chuya Motor, no un dato de la fuente.' : undefined}
                 onChange={(id) => {
+                  if (!id) return dispatch({ type: 'clear', field: 'model' })
                   const m = models.status === 'ready' ? models.data.find((x) => x.id === id) : undefined
                   if (m) dispatch({ type: 'selectModel', value: m })
                 }}
               />
-              <ListStatus state={models} what="los modelos" emptyText="No hay modelos cargados para esta marca." onRetry={doRetry} onManual={toManual} />
+              <ListStatus state={models} showLoading={false} what="los modelos" emptyText="No hay modelos cargados para esta marca." onRetry={doRetry} onManual={toManual} />
             </div>
             <div className="min-w-0">
               {years.status === 'ready' && years.data === null ? (
@@ -410,10 +392,9 @@ export function VehicleSelector({ state: s, dispatch, loader = defaultLoader, as
                   <p className="mt-1 text-xs text-brand-text-light">El año que elijas se toma como dato tuyo, sin verificar.</p>
                 </div>
               ) : (
-                <FilterableSelect
+                <PlainSelect
                   id={`${uid}-year`}
                   label="Año"
-                  searchable={false}
                   placeholder={s.model ? 'Elegí el año' : 'Elegí primero el modelo'}
                   options={years.status === 'ready' && years.data ? yearOptions(years.data, s.model, years.meta) : []}
                   extraOptions={years.status === 'ready' ? [{ value: UNKNOWN, label: 'No sé el año' }] : []}
@@ -427,22 +408,28 @@ export function VehicleSelector({ state: s, dispatch, loader = defaultLoader, as
             </div>
             {askVersion && (
               <div className="min-w-0">
-                <FilterableSelect
+                <SearchableSelect
                   id={`${uid}-version`}
                   label="Versión / motor"
-                  placeholder={s.model && (s.year !== null || s.yearUnknown) ? 'Elegí la versión' : 'Elegí primero el año'}
-                  options={versions.status === 'ready' ? versions.data.map((v) => ({ value: v.id, label: versionOptionLabel(v, s.model?.name) })) : []}
-                  extraOptions={versions.status === 'ready' ? [{ value: UNKNOWN, label: 'No conozco el motor ni la versión' }] : []}
+                  placeholder={s.model && (s.year !== null || s.yearUnknown) ? 'Buscá o elegí la versión' : 'Elegí primero el año'}
+                  options={versionOptions}
+                  pinnedOptions={versions.status === 'ready' ? VERSION_UNKNOWN_OPTIONS : NO_OPTIONS}
                   value={s.versionUnknown ? UNKNOWN : (s.version?.id ?? '')}
+                  valueLabel={s.version ? versionOptionLabel(s.version, s.model?.name) : undefined}
+                  loading={versions.status === 'loading'}
+                  loadingText="Cargando versiones…"
+                  emptyMessage="Ninguna versión coincide con lo que escribiste."
+                  clearable
                   disabled={disabled || versions.status !== 'ready'}
                   hint={s.version && !s.version.engine ? 'El catálogo no indica el motor de esta versión.' : undefined}
                   onChange={(id) => {
+                    if (!id) return dispatch({ type: 'clear', field: 'version' })
                     if (id === UNKNOWN) return dispatch({ type: 'versionUnknown' })
                     const v = versions.status === 'ready' ? versions.data.find((x) => x.id === id) : undefined
                     if (v) dispatch({ type: 'selectVersion', value: v })
                   }}
                 />
-                <ListStatus state={versions} what="las versiones" emptyText="No hay versiones cargadas para este año." onRetry={doRetry} onManual={toManual} />
+                <ListStatus state={versions} showLoading={false} what="las versiones" emptyText="No hay versiones cargadas para este año." onRetry={doRetry} onManual={toManual} />
               </div>
             )}
           </div>
