@@ -27,6 +27,7 @@ import { PRICING_LIMITS, createPricingService, type PricedItem, type SearchGate 
 import { selectPriceProvider } from './provider-registry'
 import { createSearchGate, isPricingKillSwitchOn } from './search-budget'
 import { MemoryPricingCache, UpstashPricingCache, type PricingCache } from './shared-cache'
+import { consoleSearchListener, type PricingSearchListener } from './search-telemetry'
 import type { ClientOffer, ClientPricedItem, MissingData, PartsPricesResponse } from '@/domain/budget/research/parts-prices-contract'
 import type { PriceProvider } from './types'
 
@@ -75,6 +76,8 @@ export interface HandlerDeps {
   store?: QuotaStore | null
   cache?: PricingCache
   now?: () => number
+  /** Safe search diagnostics sink (default: one JSON line on stdout, silent under tests). */
+  onSearch?: PricingSearchListener
 }
 
 // Per-process singletons (counters fallback, cache, service) — survive across requests.
@@ -142,11 +145,11 @@ function sharedCacheFor(llm: LlmProtectionConfig | null): PricingCache {
   return memoryCache
 }
 
-function serviceFor(provider: PriceProvider, cache: PricingCache, prefix: string) {
+function serviceFor(provider: PriceProvider, cache: PricingCache, prefix: string, onSearch: PricingSearchListener) {
   const key = `${provider.id}|${cache.distributed}|${prefix}`
   let s = services.get(key)
   if (!s) {
-    s = createPricingService({ provider, sharedCache: cache, cacheKeyPrefix: prefix })
+    s = createPricingService({ provider, sharedCache: cache, cacheKeyPrefix: prefix, onSearch })
     services.set(key, s)
   }
   return s
@@ -231,7 +234,9 @@ export async function handlePartsPricesRequest(req: Request, deps: HandlerDeps =
   })
 
   const cache = deps.cache ?? sharedCacheFor(llm)
-  const service = deps.provider !== undefined || deps.cache ? createPricingService({ provider, sharedCache: cache, cacheKeyPrefix: prefix }) : serviceFor(provider, cache, prefix)
+  const onSearch = deps.onSearch ?? consoleSearchListener()
+  const service =
+    deps.provider !== undefined || deps.cache ? createPricingService({ provider, sharedCache: cache, cacheKeyPrefix: prefix, onSearch }) : serviceFor(provider, cache, prefix, onSearch)
 
   // Server-side identification: labor and other concepts are never searched.
   const identified = body.lines.map((l) => ({ line: l, category: classifyDescription(l.description) }))

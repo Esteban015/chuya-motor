@@ -80,6 +80,13 @@ export interface ProviderDiagnostics {
   dropReasons: Partial<Record<DropReason, number>>
   priceFormats: string[]
   linkHosts: string[]
+  /**
+   * Where a failed search stopped: 'request' = before the response headers arrived (connect, DNS,
+   * provider still working); 'body' = headers arrived but reading / parsing the body failed.
+   */
+  failurePhase?: 'request' | 'body'
+  /** Provider timeout in force for this search (ms). */
+  timeoutMs?: number
 }
 
 export interface ProviderResult {

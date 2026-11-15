@@ -39,6 +39,7 @@ type View =
 
 const ERROR_TEXT = {
   unavailable: 'La búsqueda automática no está disponible en este momento. Usá la búsqueda manual de cada repuesto.',
+  slow: 'La búsqueda tardó demasiado en responder. Esto no significa que no haya publicaciones: usá la búsqueda manual de cada repuesto o probá más tarde.',
   rate_limited: 'Hiciste varias búsquedas seguidas. Probá más tarde o usá la búsqueda manual de cada repuesto.',
   invalid: 'No pudimos buscar estos repuestos. Revisá los nombres o usá la búsqueda manual.',
 } as const
@@ -182,6 +183,15 @@ function ItemResult({ item, label }: { item: ClientPricedItem; label: string }) 
   )
 }
 
+/** Announced in the live region. Parts that could not be searched are never counted as "0 results". */
+function doneSummary(items: ClientPricedItem[]): string {
+  const offers = items.reduce((n, i) => n + i.offers.length, 0)
+  const failed = items.filter((i) => i.status === 'unavailable').length
+  const base = `Búsqueda terminada. ${offers === 1 ? '1 publicación' : `${offers} publicaciones`} para revisar.`
+  if (failed === 0) return base
+  return `${base} ${failed === 1 ? 'No pudimos consultar 1 repuesto' : `No pudimos consultar ${failed} repuestos`}: usá la búsqueda manual.`
+}
+
 export function AutoPricingPanel({ parts, vehicle }: { parts: ResearchLine[]; vehicle: VehicleInfo }) {
   const uid = useId()
   const [view, setView] = useState<View>({ kind: 'idle' })
@@ -207,14 +217,16 @@ export function AutoPricingPanel({ parts, vehicle }: { parts: ResearchLine[]; ve
       })
       const body = (await res.json().catch(() => null)) as PartsPricesResponse | null
       if (res.status === 429) setView({ kind: 'error', message: ERROR_TEXT.rate_limited })
+      else if (res.status === 504) setView({ kind: 'error', message: ERROR_TEXT.slow })
       else if (res.status === 400 || res.status === 413 || res.status === 415) setView({ kind: 'error', message: ERROR_TEXT.invalid })
       else if (!res.ok || !body || body.status !== 'ok' || !Array.isArray(body.items)) setView({ kind: 'error', message: ERROR_TEXT.unavailable })
       else {
         setView({ kind: 'done', items: body.items })
         setLastSignature(signature)
       }
-    } catch {
-      setView({ kind: 'error', message: ERROR_TEXT.unavailable })
+    } catch (e) {
+      // Browser-side timeout → "slow", any other failure → "unavailable". Never retried by itself.
+      setView({ kind: 'error', message: (e as { name?: string })?.name === 'TimeoutError' ? ERROR_TEXT.slow : ERROR_TEXT.unavailable })
     } finally {
       inFlight.current = false
     }
@@ -252,7 +264,7 @@ export function AutoPricingPanel({ parts, vehicle }: { parts: ResearchLine[]; ve
       </button>
       <div id={`${uid}-status`} role="status" aria-live="polite" className="text-xs text-brand-text-muted">
         {view.kind === 'loading' && 'Buscando publicaciones. Puede tardar unos segundos.'}
-        {view.kind === 'done' && `Búsqueda terminada. ${view.items.reduce((n, i) => n + i.offers.length, 0)} publicaciones para revisar.`}
+        {view.kind === 'done' && doneSummary(view.items)}
       </div>
       {view.kind === 'error' && (
         <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800" data-testid="auto-pricing-error">

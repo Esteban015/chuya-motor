@@ -26,9 +26,12 @@ export function unavailable(reason: UnavailableReason, startedAt: number, diagno
 /**
  * Body read/parse failure. The timeout signal also aborts the BODY read: an abort there is a
  * timeout, not a malformed response (first real SerpApi probe, case D: 4021 ms → "bad_response").
+ * Only a JSON parse error (SyntaxError) is a malformed response; a stream that breaks while being
+ * read (connection reset, "terminated") is a network failure. None of them is "no results".
  */
 export function bodyFailure(e: unknown): UnavailableReason {
-  return networkFailure(e) === 'timeout' ? 'timeout' : 'bad_response'
+  if (networkFailure(e) === 'timeout') return 'timeout'
+  return (e as { name?: string })?.name === 'SyntaxError' ? 'bad_response' : 'network'
 }
 
 export function emptyDiagnostics(httpStatus?: number): ProviderDiagnostics {

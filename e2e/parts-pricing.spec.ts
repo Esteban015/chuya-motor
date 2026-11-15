@@ -123,6 +123,7 @@ test.describe('PP-E2E-01 panel and explicit search', () => {
   for (const [status, payload, msg] of [
     [429, { status: 'rate_limited' }, 'varias búsquedas seguidas'],
     [503, { status: 'error' }, 'no está disponible'],
+    [504, { status: 'error' }, 'tardó demasiado'],
   ] as const) {
     test(`mocked failure HTTP ${status} → message, retry possible, 7B intact`, async ({ page }) => {
       await page.route(ENDPOINT, (route) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(payload) }))
@@ -146,6 +147,21 @@ test.describe('PP-E2E-01 panel and explicit search', () => {
     await expect(panel).toContainText('límite de búsquedas automáticas')
     await expect(panel.getByTestId('auto-offer')).toHaveCount(0)
     await expect(panel).not.toContainText('$')
+  })
+
+  test('slow provider, service down and no results are told apart; a failure is never "no results"', async ({ page }) => {
+    await page.route(ENDPOINT, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'ok', provider: 'serpapi', truncated: false, items: [{ lineId: 'l1', status: 'unavailable', reason: 'network', offers: [], hidden: 0 }, { lineId: 'l2', status: 'unavailable', reason: 'timeout', offers: [], hidden: 0 }] }) }),
+    )
+    await openParts(page)
+    const panel = page.getByTestId('auto-pricing-panel')
+    await panel.getByRole('button', { name: 'Buscar publicaciones' }).click()
+    const items = panel.getByTestId('auto-item')
+    await expect(items.nth(0)).toContainText('no está disponible en este momento')
+    await expect(items.nth(1)).toContainText('tardó demasiado')
+    await expect(panel).not.toContainText('No encontramos publicaciones')
+    await expect(panel.getByRole('status')).toContainText('No pudimos consultar 2 repuestos')
+    await expect(page.getByTestId('part-card')).toHaveCount(2) // manual search kept
   })
 })
 

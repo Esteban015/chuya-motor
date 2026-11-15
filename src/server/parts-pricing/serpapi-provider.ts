@@ -37,10 +37,14 @@ import type { DropReason, FetchLike, PriceOffer, PriceProvider, PriceQuery, Prov
 export const SERPAPI_URL = 'https://serpapi.com/search.json'
 /**
  * Google Shopping via SerpApi is slower than a JSON API: the first real probe measured 1.5–3 s
- * per non-cached search and one case aborted at the old 4 s limit. Parts are searched in
- * parallel, so the request-level wait stays ≈ this value.
+ * per non-cached search and one case aborted at the old 4 s limit; in production a search aborted
+ * at 10 s. Aborting does NOT cancel the search on SerpApi's side (it is billed when it completes),
+ * so a premature abort spends the credit and shows nothing: waiting a little longer costs no
+ * extra searches. Parts are searched in parallel, so the request-level wait stays ≈ this value.
+ * Kept below the client timeout (auto-pricing-panel, 25 s) and the route's maxDuration (30 s).
+ * Never retried automatically.
  */
-export const SERPAPI_TIMEOUT_MS = 10_000
+export const SERPAPI_TIMEOUT_MS = 15_000
 /**
  * Google Shopping returns one page (~40 items) per search and SerpApi bills per SEARCH, not per
  * item: evaluate the whole page (first real probe: raw=40 but only the first 10 were examined).
@@ -153,13 +157,15 @@ export function createSerpApiProvider(opts: { apiKey: string | undefined; fetch?
       url.searchParams.set('location', 'Argentina')
       url.searchParams.set('api_key', opts.apiKey)
 
+      const timeoutMs = opts.timeoutMs ?? SERPAPI_TIMEOUT_MS
       let res: Response
       try {
-        res = await doFetch(url.toString(), { method: 'GET', signal: AbortSignal.timeout(opts.timeoutMs ?? SERPAPI_TIMEOUT_MS), redirect: 'error', cache: 'no-store' })
+        // One attempt only: a paid search is never retried automatically.
+        res = await doFetch(url.toString(), { method: 'GET', signal: AbortSignal.timeout(timeoutMs), redirect: 'error', cache: 'no-store' })
       } catch (e) {
-        return unavailable(networkFailure(e), startedAt, emptyDiagnostics())
+        return unavailable(networkFailure(e), startedAt, { ...emptyDiagnostics(), failurePhase: 'request', timeoutMs })
       }
-      const diagnostics = emptyDiagnostics(res.status)
+      const diagnostics: ProviderDiagnostics = { ...emptyDiagnostics(res.status), timeoutMs }
       if (!res.ok) {
         diagnostics.providerError = res.status === 401 ? 'invalid_key' : res.status === 429 ? 'quota' : 'other'
         return unavailable(httpFailure(res.status), startedAt, diagnostics)
@@ -169,6 +175,7 @@ export function createSerpApiProvider(opts: { apiKey: string | undefined; fetch?
       try {
         body = await res.json()
       } catch (e) {
+        diagnostics.failurePhase = 'body'
         return unavailable(bodyFailure(e), startedAt, diagnostics)
       }
       if (!body || typeof body !== 'object' || Array.isArray(body)) return unavailable('bad_response', startedAt, diagnostics)

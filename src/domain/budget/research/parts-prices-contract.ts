@@ -63,10 +63,25 @@ export const MISSING_SHORT_LABEL: Record<MissingData, string> = {
   position: 'posición (delantero o trasero)',
 }
 
+/** Provider failures that are neither slowness nor a search limit: one "temporarily unavailable" text. */
+const TEMPORARILY_UNAVAILABLE = 'El servicio de búsqueda no está disponible en este momento. Esto no significa que no haya publicaciones: usá la búsqueda manual.'
+
+/**
+ * Per-part reasons. Four different situations, never mixed up:
+ *   slow provider (timeout) · temporarily unavailable · search limit reached · no publications
+ *   (status no_results, rendered separately). A failure is NEVER worded as "no results".
+ */
 export const ITEM_REASON_LABEL: Record<string, string> = {
   quota_exceeded: 'Se alcanzó el límite de búsquedas automáticas por ahora. Usá la búsqueda manual.',
-  store_unavailable: 'La búsqueda automática no está disponible en este momento. Usá la búsqueda manual.',
-  timeout: 'El proveedor tardó demasiado en responder. Usá la búsqueda manual.',
+  timeout: 'El proveedor de búsqueda tardó demasiado en responder. Esto no significa que no haya publicaciones: usá la búsqueda manual o probá más tarde.',
+  store_unavailable: TEMPORARILY_UNAVAILABLE,
+  network: TEMPORARILY_UNAVAILABLE,
+  provider_error: TEMPORARILY_UNAVAILABLE,
+  bad_response: TEMPORARILY_UNAVAILABLE,
+  unauthorized: TEMPORARILY_UNAVAILABLE,
+  forbidden: TEMPORARILY_UNAVAILABLE,
+  rate_limited: TEMPORARILY_UNAVAILABLE,
+  disabled: TEMPORARILY_UNAVAILABLE,
   not_a_part: 'No se busca automáticamente: no es un repuesto.',
   unsafe: 'Por seguridad, no se busca automáticamente esta descripción.',
   empty: 'Falta el nombre del repuesto.',
