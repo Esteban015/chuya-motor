@@ -14,7 +14,7 @@ import { CATEGORY_LABEL, MAX_DESCRIPTION, MAX_LINES, type LineCategory, type Res
 import { BulletList, CopyQuestionsButton, QuestionList, SectionCard } from '@/components/results/report-parts'
 import { ProvenanceBadge } from './badges'
 import { PartCard } from './part-card'
-import { AutoPricingPanel } from './auto-pricing-panel'
+import { AutoPricingPanel, type PricingResultsSnapshot } from './auto-pricing-panel'
 
 let lineSeq = 0
 const newLineId = () => `added-${Date.now().toString(36)}-${++lineSeq}`
@@ -57,6 +57,7 @@ export function ResearchWorkspace({
   serverTotalMinor,
   serverQuestions = [],
   autoPricingEnabled = false,
+  onPricingResults,
 }: {
   lines: ResearchLine[]
   onLinesChange: (lines: ResearchLine[]) => void
@@ -66,6 +67,8 @@ export function ResearchWorkspace({
   serverQuestions?: readonly string[]
   /** Server feature flag (7C). Off → no automatic search UI and no request is ever made. */
   autoPricingEnabled?: boolean
+  /** 7F: receives the automatic search results shown on screen (for the PDF report). */
+  onPricingResults?: (snapshot: PricingResultsSnapshot) => void
 }) {
   const [newPart, setNewPart] = useState('')
   const [addError, setAddError] = useState<string | null>(null)
@@ -138,7 +141,7 @@ export function ResearchWorkspace({
           </ul>
         )}
 
-        {autoPricingEnabled && parts.length > 0 && <AutoPricingPanel parts={parts} vehicle={vehicle} />}
+        {autoPricingEnabled && parts.length > 0 && <AutoPricingPanel parts={parts} vehicle={vehicle} onResults={onPricingResults} />}
 
         <form onSubmit={addPart} className="flex flex-col gap-2 sm:flex-row" aria-label="Agregar un repuesto">
           <label htmlFor={`${uid}-new`} className="sr-only">Nombre del repuesto a agregar</label>

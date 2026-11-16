@@ -249,12 +249,15 @@ export function BudgetReport({
   declared,
   onNewQuery,
   research,
+  reportExport,
 }: {
   report: ClientAnalyzeOutput
   declared: DeclaredBudgetInput
   onNewQuery: () => void
   /** 7B: parts research / comparison, rendered after the verification and before the actions. */
   research?: React.ReactNode
+  /** 7F: "Chuya Informe" actions (PDF / print), right after the safety and AI notices. */
+  reportExport?: React.ReactNode
 }) {
   const budget = report.route === 'budget' ? report.budget : null
   const vehicleName = [declared.make, declared.model, declared.year].filter(Boolean).join(' ')
@@ -276,6 +279,8 @@ export function BudgetReport({
 
       {report.severity && <SeverityBanner severity={report.severity} />}
       {report.fallback && <FallbackAlert fallbackText={report.fallbackText} aiStatus={report.aiStatus} />}
+
+      {reportExport}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         {/* Totals first in DOM: the verification is the most important information on mobile too. */}

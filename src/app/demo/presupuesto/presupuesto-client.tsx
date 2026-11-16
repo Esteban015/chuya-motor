@@ -34,6 +34,8 @@ import type { ResearchLine, VehicleInfo } from '@/domain/budget/research/types'
 import { VehicleSelector } from '@/components/vehicle/vehicle-selector'
 import { CATEGORY_LABEL } from '@/domain/vehicle/vehicle-catalog'
 import { initialVehicleSelection, manualYearError, selectionToApiVehicle, selectionToVehicleInfo, vehicleSelectionReducer } from '@/domain/vehicle/vehicle-selection'
+import { ReportExport } from '@/components/report-pdf/report-export'
+import { buildBudgetReport, budgetReadiness, type PricingSnapshot, type PrivacyOptions } from '@/domain/report/chuya-report'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -157,6 +159,8 @@ export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorE
   const [partsState, setPartsState] = useState<PartsState>({ kind: 'form' })
   const [quoteLines, setQuoteLines] = useState<ResearchLine[]>([])
   const [partsLines, setPartsLines] = useState<ResearchLine[]>([])
+  /** 7F: automatic search results shown on screen (kept only while the quote result is open). */
+  const [quotePricing, setQuotePricing] = useState<PricingSnapshot | null>(null)
 
   const uid = useId()
   const textErrorId = `${uid}-text-error`
@@ -236,6 +240,7 @@ export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorE
 
   async function submitQuote() {
     setQuoteState({ kind: 'loading' })
+    setQuotePricing(null)
     let apiVehicle: ApiVehicleInput = {}
     if (vehicleSelectorEnabled) {
       apiVehicle = selectionToApiVehicle(selection)
@@ -289,7 +294,10 @@ export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorE
 
   /** Back to the form keeping everything the person typed. */
   function backToForm() {
-    if (isQuote) setQuoteState({ kind: 'form' })
+    if (isQuote) {
+      setQuoteState({ kind: 'form' })
+      setQuotePricing(null)
+    }
     else setPartsState({ kind: 'form' })
   }
 
@@ -297,6 +305,7 @@ export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorE
   function newQuote() {
     setForm((p) => ({ ...p, budgetText: '' }))
     setQuoteLines([])
+    setQuotePricing(null)
     setFieldErrors({})
     setQuoteState({ kind: 'form' })
   }
@@ -357,6 +366,23 @@ export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorE
                 year: vehicle.year,
               }}
               onNewQuery={newQuote}
+              reportExport={
+                <ReportExport
+                  readiness={budgetReadiness({ report: quoteState.report })}
+                  freeTexts={[form.budgetText, vehicle.make, vehicle.model, vehicle.engine]}
+                  build={(privacy: PrivacyOptions, generatedAt: Date) =>
+                    buildBudgetReport({
+                      report: quoteState.report,
+                      vehicle: { vehicleType: vehicleTypeLabel, make: vehicle.make, model: vehicle.model, year: vehicle.year, engine: vehicle.engine, source: vehicleSelectorEnabled && selection.mode === 'catalog' ? 'catalog' : 'manual' },
+                      budgetText: form.budgetText.trim(),
+                      lines: quoteLines,
+                      pricing: quotePricing,
+                      generatedAt,
+                      privacy,
+                    })
+                  }
+                />
+              }
               research={
                 quoteState.report.route === 'budget' ? (
                   <ResearchWorkspace
@@ -367,6 +393,7 @@ export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorE
                     serverTotalMinor={quoteState.report.budget?.computedTotalMinorUnit ?? null}
                     serverQuestions={quoteState.report.questions}
                     autoPricingEnabled={autoPricingEnabled}
+                    onPricingResults={setQuotePricing}
                   />
                 ) : undefined
               }

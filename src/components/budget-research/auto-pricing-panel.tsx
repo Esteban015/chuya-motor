@@ -19,6 +19,7 @@ import {
   MAX_AUTO_PARTS,
   MISSING_DATA_LABEL,
   MISSING_SHORT_LABEL,
+  safeOfferUrl,
   type ClientOffer,
   type ClientPricedItem,
   type MissingData,
@@ -29,7 +30,6 @@ import { ProvenanceBadge } from './badges'
 
 const ENDPOINT = '/api/budget/parts-prices'
 const CLIENT_TIMEOUT_MS = 25_000
-const OFFER_HOSTS = ['google.com.ar', 'google.com']
 
 type View =
   | { kind: 'idle' }
@@ -43,18 +43,6 @@ const ERROR_TEXT = {
   rate_limited: 'Hiciste varias búsquedas seguidas. Probá más tarde o usá la búsqueda manual de cada repuesto.',
   invalid: 'No pudimos buscar estos repuestos. Revisá los nombres o usá la búsqueda manual.',
 } as const
-
-/** Only https links on the provider's Google Shopping hosts are rendered as links. */
-function safeOfferUrl(raw: string): string | null {
-  try {
-    const u = new URL(raw)
-    const host = u.hostname.toLowerCase()
-    if (u.protocol !== 'https:' || u.username || u.password) return null
-    return OFFER_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) ? u.toString() : null
-  } catch {
-    return null
-  }
-}
 
 function formatDate(iso: string): string {
   const d = new Date(iso)
@@ -192,7 +180,12 @@ function doneSummary(items: ClientPricedItem[]): string {
   return `${base} ${failed === 1 ? 'No pudimos consultar 1 repuesto' : `No pudimos consultar ${failed} repuestos`}: usá la búsqueda manual.`
 }
 
-export function AutoPricingPanel({ parts, vehicle }: { parts: ResearchLine[]; vehicle: VehicleInfo }) {
+/** 7F: what the panel shows, so the Chuya Informe can include it (no new search is ever made). */
+export interface PricingResultsSnapshot {
+  items: Array<{ partLabel: string; item: ClientPricedItem }>
+}
+
+export function AutoPricingPanel({ parts, vehicle, onResults }: { parts: ResearchLine[]; vehicle: VehicleInfo; onResults?: (snapshot: PricingResultsSnapshot) => void }) {
   const uid = useId()
   const [view, setView] = useState<View>({ kind: 'idle' })
   const [lastSignature, setLastSignature] = useState<string | null>(null)
@@ -223,6 +216,7 @@ export function AutoPricingPanel({ parts, vehicle }: { parts: ResearchLine[]; ve
       else {
         setView({ kind: 'done', items: body.items })
         setLastSignature(signature)
+        onResults?.({ items: body.items.map((item) => ({ partLabel: labels.get(item.lineId) ?? 'Repuesto', item })) })
       }
     } catch (e) {
       // Browser-side timeout → "slow", any other failure → "unavailable". Never retried by itself.
