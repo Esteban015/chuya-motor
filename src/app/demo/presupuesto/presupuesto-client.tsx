@@ -35,7 +35,7 @@ import { VehicleSelector } from '@/components/vehicle/vehicle-selector'
 import { CATEGORY_LABEL } from '@/domain/vehicle/vehicle-catalog'
 import { initialVehicleSelection, manualYearError, selectionToApiVehicle, selectionToVehicleInfo, vehicleSelectionReducer } from '@/domain/vehicle/vehicle-selection'
 import { ReportExport } from '@/components/report-pdf/report-export'
-import { buildBudgetReport, budgetReadiness, type PricingSnapshot, type PrivacyOptions } from '@/domain/report/chuya-report'
+import { buildBudgetReport, buildPartsReport, budgetReadiness, partsReadiness, type PricingSnapshot, type PrivacyOptions } from '@/domain/report/chuya-report'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -161,6 +161,8 @@ export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorE
   const [partsLines, setPartsLines] = useState<ResearchLine[]>([])
   /** 7F: automatic search results shown on screen (kept only while the quote result is open). */
   const [quotePricing, setQuotePricing] = useState<PricingSnapshot | null>(null)
+  /** 7G: same, for the parts list (kept only while the parts result is open). */
+  const [partsPricing, setPartsPricing] = useState<PricingSnapshot | null>(null)
 
   const uid = useId()
   const textErrorId = `${uid}-text-error`
@@ -298,7 +300,10 @@ export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorE
       setQuoteState({ kind: 'form' })
       setQuotePricing(null)
     }
-    else setPartsState({ kind: 'form' })
+    else {
+      setPartsState({ kind: 'form' })
+      setPartsPricing(null)
+    }
   }
 
   /** "Analizar otro presupuesto": a new, empty quote (vehicle data kept). */
@@ -416,9 +421,23 @@ export function PresupuestoClient({ autoPricingEnabled = false, vehicleSelectorE
                 ← Editar la lista
               </button>
             </div>
+            <ReportExport
+              readiness={partsReadiness({ lines: partsLines })}
+              freeTexts={[...partsLines.flatMap((l) => [l.description, l.partBrand, l.partCode, ...l.references.flatMap((r) => [r.description, r.store])]), vehicle.make, vehicle.model, vehicle.engine]}
+              build={(privacy: PrivacyOptions, generatedAt: Date) =>
+                buildPartsReport({
+                  lines: partsLines,
+                  vehicle: { vehicleType: vehicleTypeLabel, make: vehicle.make, model: vehicle.model, year: vehicle.year, engine: vehicle.engine, source: vehicleSelectorEnabled && selection.mode === 'catalog' ? 'catalog' : 'manual' },
+                  pricing: partsPricing,
+                  autoPricingEnabled,
+                  generatedAt,
+                  privacy,
+                })
+              }
+            />
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
               <div className="min-w-0">
-                <ResearchWorkspace lines={partsLines} onLinesChange={setPartsLines} vehicle={vehicle} mode="parts" autoPricingEnabled={autoPricingEnabled} />
+                <ResearchWorkspace lines={partsLines} onLinesChange={setPartsLines} vehicle={vehicle} mode="parts" autoPricingEnabled={autoPricingEnabled} onPricingResults={setPartsPricing} />
               </div>
               <div className="min-w-0 space-y-4 lg:sticky lg:top-6">
                 <ProvenanceLegend />

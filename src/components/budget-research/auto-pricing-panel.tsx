@@ -19,6 +19,7 @@ import {
   MAX_AUTO_PARTS,
   MISSING_DATA_LABEL,
   MISSING_SHORT_LABEL,
+  pricingLineId,
   safeOfferUrl,
   type ClientOffer,
   type ClientPricedItem,
@@ -56,7 +57,7 @@ function buildRequest(parts: ResearchLine[], vehicle: VehicleInfo) {
   return {
     vehicle: { make: t(vehicle.make, 40), model: t(vehicle.model, 40), year: /^(19|20)\d{2}$/.test(year) ? year : '', engine: t(vehicle.engine, 40) },
     lines: parts.slice(0, MAX_AUTO_PARTS).map((p) => ({
-      id: p.id.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'x',
+      id: pricingLineId(p.id),
       description: t(p.description, 200),
       presentation: p.presentation,
       quantity: Math.min(999, Math.max(1, Math.trunc(p.quantity) || 1)),
@@ -194,7 +195,7 @@ export function AutoPricingPanel({ parts, vehicle, onResults }: { parts: Researc
   const request = buildRequest(parts, vehicle)
   const signature = JSON.stringify(request)
   const alreadySearched = view.kind === 'done' && lastSignature === signature
-  const labels = new Map(parts.map((p) => [p.id.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'x', p.description]))
+  const labels = new Map(parts.map((p) => [pricingLineId(p.id), p.description]))
 
   async function search() {
     if (inFlight.current || alreadySearched || request.lines.length === 0) return
