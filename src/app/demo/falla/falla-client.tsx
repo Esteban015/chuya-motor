@@ -13,6 +13,8 @@ import { SiteModeBadge } from '@/components/ai-status-badge'
 import { PrivacyNotice } from '@/components/privacy-notice'
 import { SafetyAlert } from '@/components/safety-alert'
 import { SymptomReport } from '@/components/results/symptom-report'
+import { ReportExport } from '@/components/report-pdf/report-export'
+import { buildDiagnosisReport, diagnosisReadiness, type PrivacyOptions } from '@/domain/report/chuya-report'
 import { RESULTS_CONTAINER } from '@/components/results/report-parts'
 import { FORM_CONTAINER, FORM_GRID, SymptomStepPanel, VehicleStepPanel } from '@/components/forms/form-context-panels'
 import { VehicleSelector } from '@/components/vehicle/vehicle-selector'
@@ -604,6 +606,28 @@ export function FallaClient({ vehicleSelectorEnabled = false }: { vehicleSelecto
                 occurrence: form.occurrence || undefined,
               }}
               onNewQuery={resetAll}
+              reportExport={(() => {
+                const report = pageState.report
+                const v = declaredVehicle()
+                const symptomText = form.symptomText.trim()
+                const occurrence = form.occurrence || undefined
+                return (
+                  <ReportExport
+                    readiness={diagnosisReadiness({ report, symptomText })}
+                    freeTexts={[symptomText, v.make, v.model]}
+                    build={(privacy: PrivacyOptions, generatedAt: Date) =>
+                      buildDiagnosisReport({
+                        report,
+                        vehicle: { ...v, source: vehicleSelectorEnabled && selection.mode === 'catalog' ? 'catalog' : 'manual' },
+                        symptomText,
+                        occurrence,
+                        generatedAt,
+                        privacy,
+                      })
+                    }
+                  />
+                )
+              })()}
             />
           </div>
         )}

@@ -51,3 +51,25 @@
     animation: none;
   }
 }
+
+/* 7F — Chuya Informe print view: only the report is printed (A4), never the rest of the page. */
+@media screen {
+  #chuya-print-root {
+    display: none;
+  }
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm 14mm;
+  }
+  html.chuya-printing body > *:not(#chuya-print-root) {
+    display: none !important;
+  }
+  html.chuya-printing #chuya-print-root {
+    display: block;
+  }
+  #chuya-print-root a {
+    color: #0b5394;
+  }
+}

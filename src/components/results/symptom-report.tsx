@@ -40,10 +40,13 @@ export function SymptomReport({
   report,
   declared,
   onNewQuery,
+  reportExport,
 }: {
   report: ClientAnalyzeOutput
   declared: DeclaredSymptomInput
   onNewQuery: () => void
+  /** 7F: "Chuya Informe" actions (PDF / print), right after the safety and AI notices. */
+  reportExport?: React.ReactNode
 }) {
   const vehicleName = [declared.make, declared.model, declared.year].filter(Boolean).join(' ')
   const hasHypotheses = report.hypotheses.length > 0
@@ -76,6 +79,8 @@ export function SymptomReport({
       {/* Safety first: full width, right before the hypotheses, never collapsible. */}
       {report.severity && <SeverityBanner severity={report.severity} />}
       {report.fallback && <FallbackAlert fallbackText={report.fallbackText} aiStatus={report.aiStatus} />}
+
+      {reportExport}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         {/* Main column (first in DOM) */}

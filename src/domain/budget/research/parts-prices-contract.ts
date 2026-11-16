@@ -90,3 +90,18 @@ export const ITEM_REASON_LABEL: Record<string, string> = {
 }
 
 export const MAX_AUTO_PARTS = 5
+
+/** Hosts of the provider's product pages (Google Shopping). Shared by the panel and the 7F report. */
+export const OFFER_HOSTS = ['google.com.ar', 'google.com'] as const
+
+/** Only https links on the provider's hosts, without credentials; anything else → null. */
+export function safeOfferUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw)
+    const host = u.hostname.toLowerCase()
+    if (u.protocol !== 'https:' || u.username || u.password || raw.length > 500) return null
+    return OFFER_HOSTS.some((h) => host === h || host.endsWith(`.${h}`)) ? u.toString() : null
+  } catch {
+    return null
+  }
+}
