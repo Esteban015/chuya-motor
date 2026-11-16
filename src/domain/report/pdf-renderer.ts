@@ -378,6 +378,8 @@ function drawEntry(w: Writer, b: Extract<ReportBlock, { kind: 'entry' }>) {
 function drawBlock(w: Writer, b: ReportBlock) {
   switch (b.kind) {
     case 'paragraph':
+      // Bold lines are sub-headings: keep them with the content that follows (no orphans).
+      if (b.tone === 'strong') w.ensure(14 + 56)
       w.text(b.text, {
         font: b.tone === 'strong' ? w.f.bold : b.tone === 'muted' ? w.f.italic : w.f.regular,
         color: b.tone === 'muted' ? C.muted : C.text,

@@ -159,3 +159,18 @@ export const SAMPLE_BUDGET: Omit<BudgetReportInput, 'generatedAt'> = {
   lines: RESEARCH_LINES,
   pricing: PRICING_WITH_OFFERS,
 }
+
+// ── 7G: parts research ─────────────────────────────────────────────────────
+
+/** Parts list: brand / code on one part, a user reference, a brake part never searched. */
+export const PARTS_LINES: ResearchLine[] = [
+  RESEARCH_LINES[0]!,
+  { ...RESEARCH_LINES[1]!, partBrand: 'Marca Sintética', partCode: 'FA-1234', quantity: 1 },
+  RESEARCH_LINES[2]!,
+  { ...line('l5', 'Pastillas de freno delanteras', 'part', null), presentation: 'set' },
+  RESEARCH_LINES[3]!,
+]
+
+export const PRICING_NO_RESULTS: PricingSnapshot = {
+  items: PARTS_LINES.filter((l) => l.category === 'part').map((l) => ({ partLabel: l.description, item: { lineId: l.id, status: 'no_results' as const, offers: [], hidden: 0 } })),
+}

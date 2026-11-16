@@ -105,3 +105,8 @@ export function safeOfferUrl(raw: string): string | null {
     return null
   }
 }
+
+/** Line id as sent to the pricing route (the panel and the 7G report must match it exactly). */
+export function pricingLineId(id: string): string {
+  return id.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64) || 'x'
+}
